@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Analog-Ready Report — GPT2Block / aimc_pcm_4bit</title>
+<style>
+
+body{font-family:system-ui,sans-serif;max-width:900px;margin:2rem auto;color:#1a1a2e;
+     background:#f8f9fa;padding:0 1rem}
+h1{color:#0d1b2a;border-bottom:3px solid #4a90d9;padding-bottom:.4rem}
+h2{color:#1b4f72;margin-top:2rem}
+table{width:100%;border-collapse:collapse;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+th{background:#1b4f72;color:#fff;padding:.5rem .75rem;text-align:left}
+td{padding:.45rem .75rem;border-bottom:1px solid #dee2e6}
+tr:last-child td{border-bottom:none}
+tr:nth-child(even) td{background:#f1f5f9}
+.good{color:#155724;font-weight:600}
+.bad{color:#721c24;font-weight:600}
+.flip-yes{background:#d4edda;padding:.2rem .5rem;border-radius:3px}
+.flip-no{background:#f8d7da;padding:.2rem .5rem;border-radius:3px}
+.limits{background:#fff3cd;border-left:4px solid #ffc107;padding:1rem 1.2rem;
+        border-radius:0 4px 4px 0;margin-top:1rem}
+.limits h2{margin-top:0;color:#856404}
+.limits ul{margin:.5rem 0 0 1.2rem;padding:0}
+.limits li{margin:.3rem 0}
+.redacted-note{background:#e7f1ff;border-left:4px solid #4a90d9;padding:.6rem 1rem;
+        border-radius:0 4px 4px 0;margin:1rem 0;font-size:.9rem;color:#1b4f72}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;
+              margin-bottom:1.5rem}
+.summary-card{background:#fff;border:1px solid #dee2e6;border-radius:6px;padding:.8rem 1rem;
+              text-align:center}
+.summary-card .val{font-size:1.4rem;font-weight:700;color:#1b4f72}
+.summary-card .lbl{font-size:.8rem;color:#666;margin-top:.2rem}
+
+</style>
+</head>
+<body>
+<h1>Analog-Ready Report</h1>
+<p><strong>Model:</strong> GPT2Block &nbsp;|&nbsp;
+   <strong>Profile:</strong> aimc_pcm_4bit</p>
+<div class="redacted-note">Redacted envelope — no raw or coefficient-derived values leave the tool.</div>
+<div class="summary-grid">
+<div class="summary-card"><div class="val">0/4</div><div class="lbl">Ops favorable (break-even)</div></div><div class="summary-card"><div class="val"><span class="flip-no">No</span></div><div class="lbl">Sensitivity / verdict flip</div></div>
+</div>
+
+<h2>Cost-Model Spine — per-op breakdown</h2>
+<p>This is the <strong>shareable (redacted)</strong> view: per-op energy figures are withheld because they are derived from a private cost coefficient. Qualitative break-even verdicts only.</p>
+<table>
+<thead>
+<tr>
+<th>Op</th><th>Favorability</th><th>Break-even</th><th>Dominant limiter</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>attn.c_attn</td><td>0.0</td><td><span class="bad">✗ unfavorable</span></td><td>precision (ENOB_req 7.0 &gt;= enob_avail 6.0)</td></tr>
+<tr><td>attn.c_proj</td><td>0.0</td><td><span class="bad">✗ unfavorable</span></td><td>precision (ENOB_req 7.0 &gt;= enob_avail 6.0)</td></tr>
+<tr><td>mlp.0</td><td>0.0</td><td><span class="bad">✗ unfavorable</span></td><td>precision (ENOB_req 7.0 &gt;= enob_avail 6.0)</td></tr>
+<tr><td>mlp.2</td><td>0.0</td><td><span class="bad">✗ unfavorable</span></td><td>precision (ENOB_req 8.0 &gt;= enob_avail 6.0)</td></tr>
+</tbody>
+</table>
+
+<h2>Sensitivity — where the verdict flips</h2>
+<p>No flip detected across the ENOB sweep (5 points).</p>
+
+<div class="limits">
+<h2>Limits of this estimate</h2>
+<ul>
+<li>All energy estimates use <em>literature defaults</em>, not measured silicon. Uncertainty: ±50%
+    on energy per MAC/conversion, ±2x on DRAM movement.</li>
+<li>DRAM is a <em>single-pass lower bound</em> (weights once + activations). Partial-sum
+    re-streaming and tile weight re-loads are excluded (v0.1 refinement).</li>
+<li>Converter sharing is pessimistic (no inter-tile DAC sharing). An optimistic shared-DAC design
+    would lower conversion energy.</li>
+<li>Latency estimates are placeholders and do not enter any verdict.</li>
+<li>ADC readout fidelity auto-ranges per sample (an optimistic, idealised ADC reference); a real
+    fixed-range ADC is usually worse, especially for outlier-heavy activations — though not a hard
+    bound. It also quantises per-sample rather than per output column.</li>
+<li>Weight-programming noise (prog/read sigma) and conductance drift over time both use
+    <em>literature defaults</em>, not measured silicon; the programming-noise model is proportional
+    noise + a static read floor, and neither models 1/f noise, drift-compensation/recalibration, or
+    cycling. Drift is applied to the <em>signed weight</em>, not a G+/G&minus; differential
+    conductance pair — this understates drift of near-zero weights (whose real pair would drift
+    them away from zero). Each effect is reported per-effect above; when the profile declares
+    conductance drift, the End-of-life section composes them.</li>
+<li>Results apply only to the analysed workload shape; out-of-distribution inputs may shift
+    the break-even point.</li>
+</ul>
+</div>
+
+</body>
+</html>

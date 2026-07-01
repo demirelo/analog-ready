@@ -1,0 +1,32 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Cover the declared requires-python range (>=3.9): both ends + the primary version.
+        python-version: ["3.9", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Install dev tools
+        run: pip install ruff pytest pytest-cov
+
+      - name: Lint
+        run: |
+          ruff check analog_ready
+          ruff check tests
+
+      - name: Test with coverage gate
+        run: pytest --cov=analog_ready --cov-report=term-missing --cov-fail-under=85

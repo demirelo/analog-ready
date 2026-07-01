@@ -1,0 +1,61 @@
+# Vendor profile template — copy, fill in, and run:
+#   analog-ready analyze --model mlp --profile path/to/your_profile.yaml --redact --out report.html
+#
+# Every field declares HOW IT MAY LEAVE THE TOOL via `redaction`:
+#   exact_ok — shareable verbatim in redacted output
+#   bucket   — coarsened to an order-of-magnitude band (e.g. "1..10") in redacted output
+#   hidden   — never emitted anywhere: not in redacted output, not via repr(), and no derived
+#              value that would let a reader recover it appears in shareable artifacts
+#
+# The professional schema (all optional, but strongly recommended for measured values):
+#   unit             — e.g. "pJ", "pJ/byte", "bits"
+#   source           — citation / datasheet / measurement-report identifier
+#   uncertainty      — e.g. "+/-50%", "1-sigma 0.3"
+#   provenance       — one of: literature | measured | estimate
+#   calibration_date — ISO date the value was measured, if provenance is "measured"
+#
+# Fields marked REQUIRED are consumed by the cost model / break-even gates; the tool raises a
+# clear error naming any missing one. Fields marked OPTIONAL enable additional report sections
+# (noise robustness, retention, ADC fidelity) and are simply skipped when absent.
+
+name: vendor_example          # your profile's name (appears in reports)
+visibility: private
+fields:
+  # ---- array geometry (REQUIRED) ----
+  array_rows:             {value: 256,    redaction: exact_ok, unit: "rows"}
+  array_cols:             {value: 256,    redaction: exact_ok, unit: "cols"}
+
+  # ---- precision (REQUIRED: weight_bits, input_bits; enob_avail drives the Z gate + ADC model) ----
+  weight_bits:            {value: 4,      redaction: exact_ok, unit: "bits"}
+  input_bits:             {value: 4,      redaction: exact_ok, unit: "bits"}
+  enob_avail:             {value: 6.0,    redaction: bucket,   unit: "bits",
+                           source: "your ADC characterisation report", uncertainty: "+/-0.3",
+                           provenance: measured, calibration_date: "2026-01-15"}
+  adc_full_scale:         {value: 0.9,    redaction: exact_ok, provenance: estimate}
+                          # fixed-ADC full-scale as a fraction of the signal peak (W12 saturation model)
+
+  # ---- energy coefficients (REQUIRED) — all in picojoules ----
+  mac_energy_pj:          {value: 0.04,   redaction: bucket,   unit: "pJ/MAC",
+                           source: "e.g. LightCode arXiv:2509.16443 or your silicon", provenance: literature}
+  adc_energy_pj:          {value: 3.17,   redaction: bucket,   unit: "pJ/conversion"}
+  dac_energy_pj:          {value: 10.0,   redaction: bucket,   unit: "pJ/conversion"}
+  mem_energy_pj_per_byte: {value: 0.1,    redaction: hidden,   unit: "pJ/byte"}
+  digital_mac_energy_pj:  {value: 0.07,   redaction: exact_ok, unit: "pJ/MAC"}
+                          # the digital MAC this op would otherwise run on — the X-gate threshold
+  weight_program_energy_pj: {value: 5.0,  redaction: bucket,   unit: "pJ/write"}
+                          # analog weight-write energy — sets the Y-gate reuse threshold
+
+  # ---- device noise (OPTIONAL — enables the programming-noise robustness section) ----
+  prog_noise_sigma:       {value: 0.08,   redaction: hidden,
+                           source: "your write-verify characterisation", provenance: measured}
+  read_noise_sigma:       {value: 0.02,   redaction: hidden}
+
+  # ---- drift (OPTIONAL — enables retention + end-of-life sections; PCM/ReRAM) ----
+  drift_nu:               {value: 0.06,   redaction: bucket,
+                           source: "e.g. Joshi 2020 arXiv:1906.03138 or your retention data"}
+  drift_sigma_nu:         {value: 0.02,   redaction: hidden}
+                          # device-to-device nu spread — this, not nu itself, drives accuracy loss
+
+  # ---- roofline context (OPTIONAL) ----
+  peak_flops:             {value: 5.0e12, redaction: exact_ok, unit: "FLOP/s"}
+  peak_bw_bytes:          {value: 1.0e11, redaction: exact_ok, unit: "B/s"}

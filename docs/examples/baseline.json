@@ -1,0 +1,9 @@
+{
+  "favorability": 0.0,
+  "favorable": false,
+  "fidelity": 0.9999909102916718,
+  "model": "MLP",
+  "profile": "aimc_pcm_4bit",
+  "total_pj": 1227325.44,
+  "verdict_flip": true
+}

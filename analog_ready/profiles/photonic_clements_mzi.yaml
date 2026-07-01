@@ -1,0 +1,22 @@
+name: photonic_clements_mzi
+visibility: private
+# Coherent photonic Clements MZI mesh (the public demo architecture). Optical MACs are very
+# cheap, but with this small 64-wide mesh the converter constraint (X) is structurally unmet for
+# any workload (min converter pJ/MAC > digital MAC) — the "analog can't win on converters at this
+# array size" signal the break-even envelope surfaces. Literature defaults (LightCode, TFLN
+# ~33 fJ/MAC), not measured silicon.
+fields:
+  weight_bits:            {value: 6,       redaction: exact_ok}
+  input_bits:             {value: 4,       redaction: exact_ok}
+  enob_avail:             {value: 8.0,     redaction: bucket}
+  adc_full_scale:         {value: 0.9,     redaction: exact_ok, provenance: estimate}  # fixed detector full-scale (W12)
+  array_rows:             {value: 64,      redaction: exact_ok}
+  array_cols:             {value: 64,      redaction: exact_ok}
+  mac_energy_pj:          {value: 0.033,   redaction: bucket}   # TFLN ~33 fJ/MAC (matches the header comment; was 0.001, 33x below its own source)
+  adc_energy_pj:          {value: 3.17,    redaction: bucket}
+  dac_energy_pj:          {value: 10.0,    redaction: bucket}
+  mem_energy_pj_per_byte: {value: 0.1,     redaction: hidden}
+  digital_mac_energy_pj:  {value: 0.07,    redaction: exact_ok}
+  weight_program_energy_pj: {value: 3.5,   redaction: bucket}   # phase-shifter set; reuse threshold Y
+  peak_flops:             {value: 5.0e12,  redaction: exact_ok}
+  peak_bw_bytes:          {value: 1.0e11,  redaction: exact_ok}

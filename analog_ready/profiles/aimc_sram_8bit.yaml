@@ -1,0 +1,29 @@
+name: aimc_sram_8bit
+visibility: private
+# SRAM-based analog in-memory compute, ~8 ENOB. Higher precision, smaller arrays. Literature
+# defaults, not measured silicon.
+fields:
+  weight_bits:            {value: 8,       redaction: exact_ok}
+  input_bits:             {value: 4,       redaction: exact_ok}
+  enob_avail:             {value: 8.0,     redaction: bucket}
+  adc_full_scale:         {value: 0.95,    redaction: exact_ok, provenance: estimate}  # fixed ADC full-scale (W12)
+  array_rows:             {value: 256,     redaction: exact_ok}
+  array_cols:             {value: 256,     redaction: exact_ok}
+  mac_energy_pj:          {value: 0.02,    redaction: bucket}
+  adc_energy_pj:          {value: 3.17,    redaction: bucket}
+  dac_energy_pj:          {value: 10.0,    redaction: bucket}
+  mem_energy_pj_per_byte: {value: 0.1,     redaction: hidden}
+  digital_mac_energy_pj:  {value: 0.07,    redaction: exact_ok}
+  weight_program_energy_pj: {value: 1.0,   redaction: bucket}   # SRAM reprogram (cheap); reuse threshold Y
+  peak_flops:             {value: 1.0e12,  redaction: exact_ok}
+  peak_bw_bytes:          {value: 1.0e11,  redaction: exact_ok}
+  # Analog weight-programming noise (W7): proportional programming-error + read/thermal floor,
+  # see analog_ready/device_noise.py. SRAM cells are digitally-precise but the DAC/cell interface
+  # still carries a small conductance-dependent + thermal noise; literature-plausible defaults
+  # (aihwkit RPUConfig; Joshi 2020 arXiv:1906.03138; Le Gallo 2023 arXiv:2212.02872), NOT measured
+  # silicon. Hidden: a vendor's characterised noise floor is crown-jewel IP.
+  prog_noise_sigma:       {value: 0.05,    redaction: hidden}
+  read_noise_sigma:       {value: 0.02,    redaction: hidden}
+  # Conductance DRIFT (W8): intentionally NOT declared. SRAM analog cells store a bit-cell charge,
+  # not a PCM/ReRAM conductance state, so they do not exhibit the power-law conductance decay
+  # analog_ready/drift.py models -- there is no drift_nu/drift_sigma_nu for this device family.

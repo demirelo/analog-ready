@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "analog-ready"
+version = "0.1.0"
+description = "Analog Robustness CI for AI accelerators (AIMC-first; photonic MZI demo included)."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Omer Demirel" }]
+requires-python = ">=3.9"
+dependencies = ["torch>=2.2", "numpy>=1.23,<2", "pyyaml>=6.0"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Repository = "https://github.com/demirelo/analog-ready"
+Issues = "https://github.com/demirelo/analog-ready/issues"
+Documentation = "https://github.com/demirelo/analog-ready/blob/main/README.md"
+
+[project.optional-dependencies]
+mzi = ["torchonn"]            # optional accelerator; pure-PyTorch mzi_pure is the default
+aimc = ["aihwkit"]            # optional AIMC backend; aimc_simple is the pure-PyTorch default
+quant-brevitas = ["brevitas"]
+quant-torchao = ["torchao"]
+vision = ["torchvision"]      # optional real-vision path (analog_ready/vision.py); core stays network-free
+
+[project.scripts]
+analog-ready = "analog_ready.cli:main"
+
+# Backend plugins are discovered lazily via entry points; a missing optional dep must surface as
+# available=False+reason, never an import error.
+[project.entry-points."analog_ready.backends"]
+mzi_pure = "analog_ready.backends.mzi_pure:MZIPureBackend"
+aimc_simple = "analog_ready.backends.aimc_simple:AIMCSimpleBackend"
+mzi_torchonn = "analog_ready.backends.mzi_torchonn:MZITorchonnBackend"
+aimc_aihwkit = "analog_ready.backends.aimc_aihwkit:AIMCAihwkitBackend"
+
+[tool.setuptools.packages.find]
+include = ["analog_ready*"]
+
+[tool.setuptools.package-data]
+analog_ready = ["profiles/*.yaml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "-q"
+testpaths = ["tests"]
+# mzi_torchonn / aimc_aihwkit / quant_* are registered in tests/conftest.py; only the W6-new
+# `vision` marker is added here to avoid double-registration.
+markers = [
+    "vision: optional torchvision-backed real-vision path (skipped if torchvision is absent)",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# tests/test_w3_recovery.py is an IMMUTABLE W3 acceptance oracle — never edited. Its lone unused
+# import is silenced here rather than by touching the file; every other test is linted normally.
+"tests/test_w3_recovery.py" = ["F401"]

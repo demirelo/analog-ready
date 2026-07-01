@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>analog-ready — does your model survive analog silicon?</title>
+<style>
+  :root{
+    --paper:#f7f3ea; --paper2:#f1ebde; --inset:#ebe3d3; --card:#fbf8f1;
+    --ink:#211f19; --ink2:#5f594c; --faint:#8b8270;
+    --line:#e0d7c6; --line2:#cdc2ab;
+    --accent:#a85f1c; --accent2:#7a5a2a;
+    --ok:#3f7a52; --bad:#a64a37; --warn:#a85f1c;
+    --term:#1d1a14; --term-ink:#e9e2d2; --term-mut:#9c937e;
+    --serif:"Charter","Bitstream Charter","Iowan Old Style","Palatino Linotype",Palatino,Georgia,Cambria,serif;
+    --sans:"Inter","Helvetica Neue",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  html[data-theme="dark"]{
+    --paper:#16140e; --paper2:#1c1912; --inset:#221d14; --card:#1b1810;
+    --ink:#ece4d3; --ink2:#a79d88; --faint:#7b7260;
+    --line:#312b1f; --line2:#403828;
+    --accent:#d4933f; --accent2:#c9a878;
+    --ok:#74b78d; --bad:#d88e76; --warn:#d4933f;
+    --term:#100e09; --term-ink:#e9e2d2; --term-mut:#8e856f;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+    font-size:16px;line-height:1.62;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  ::selection{background:var(--accent);color:var(--paper)}
+  a{color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+  a:hover{border-bottom-color:var(--accent)}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 30px}
+  h1,h2,h3{font-family:var(--serif);font-weight:600;letter-spacing:-.011em}
+
+  /* ---- top bar ---- */
+  header{border-bottom:1px solid var(--line)}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:20px 0}
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand .mark{width:25px;height:25px;display:block}
+  .brand .name{font-family:var(--serif);font-weight:600;font-size:18px}
+  .brand .pill{font:500 10.5px/1 var(--sans);letter-spacing:.07em;text-transform:uppercase;
+    color:var(--ink2);border:1px solid var(--line2);border-radius:3px;padding:4px 7px}
+  .toggle{cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--ink2);
+    border-radius:3px;padding:6px 11px;font:500 12px var(--sans)}
+  .toggle:hover{border-color:var(--accent);color:var(--ink)}
+
+  /* ---- hero ---- */
+  .hero{padding:64px 0 70px}
+  .tag{display:inline-flex;align-items:center;gap:11px;font:600 12px var(--sans);
+    letter-spacing:.13em;text-transform:uppercase;color:var(--accent)}
+  .tag::before{content:"";width:26px;height:1px;background:var(--accent)}
+  h1{font-size:clamp(36px,5.6vw,60px);line-height:1.04;margin:.32em 0 .34em;max-width:15ch}
+  h1 .em{color:var(--accent)}
+  .lede{font-size:clamp(17px,2vw,20px);line-height:1.55;color:var(--ink2);max-width:56ch;font-weight:400}
+  .lede strong{color:var(--ink);font-weight:600}
+  .cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+  .btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line2);
+    background:transparent;color:var(--ink);border-radius:4px;padding:11px 17px;
+    font:600 14px var(--sans);cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .btn.primary:hover{background:var(--accent);border-color:var(--accent);color:var(--paper)}
+
+  /* ---- sections ---- */
+  section{padding:62px 0;border-top:1px solid var(--line)}
+  .eyebrow{display:inline-flex;align-items:center;gap:10px;font:600 12px var(--sans);
+    letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+  .eyebrow::before{content:"";width:22px;height:1px;background:var(--accent)}
+  h2{font-size:clamp(25px,3.4vw,35px);line-height:1.12;margin:0 0 .42em;max-width:19ch}
+  h3{font-size:19px;line-height:1.3;margin:0 0 .35em}
+  p.sub{color:var(--ink2);max-width:66ch;font-size:16.5px;margin:.2em 0 0}
+  p.sub em{color:var(--ink);font-style:italic}
+  code,kbd{font-family:var(--mono);font-size:.875em;background:var(--inset);
+    border:1px solid var(--line);border-radius:3px;padding:1px 5px}
+
+  /* ---- problem: editorial three-up ---- */
+  .points{display:grid;grid-template-columns:repeat(3,1fr);gap:34px;margin-top:36px}
+  .point{border-top:2px solid var(--ink);padding-top:18px}
+  .point svg{width:28px;height:28px;fill:none;stroke:var(--accent);stroke-width:1.6;
+    stroke-linecap:round;stroke-linejoin:round;margin-bottom:12px}
+  .point h3{margin-bottom:.3em}
+  .point p{color:var(--ink2);font-size:15px;margin:0}
+  @media(max-width:760px){.points{grid-template-columns:1fr;gap:26px}}
+
+  /* ---- pipeline svg ---- */
+  .pipe{margin-top:30px}
+  .pipe rect{fill:var(--card);stroke:var(--line2);stroke-width:1}
+  .pipe rect.hot{stroke:var(--accent);stroke-width:1.6}
+  .pipe .t{fill:var(--ink);font:600 13px var(--serif)}
+  .pipe .m{fill:var(--ink2);font:400 12px var(--sans)}
+  .pipe .s{fill:var(--accent);font:600 12px var(--sans)}
+  .pipe line{stroke:var(--line2);stroke-width:1.5}
+  .pipe marker path{fill:var(--line2)}
+
+  /* ---- explorer ---- */
+  .explorer{margin-top:24px;background:var(--paper2);border:1px solid var(--line2);
+    border-radius:6px;padding:26px}
+  .ctrls{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+  @media(max-width:760px){.ctrls{grid-template-columns:1fr;gap:18px}}
+  .ctrl label{display:flex;justify-content:space-between;align-items:baseline;
+    font:600 13.5px var(--sans);margin-bottom:7px;color:var(--ink)}
+  .ctrl label b{font:600 13px var(--mono);color:var(--accent)}
+  input[type=range]{width:100%;accent-color:var(--accent);height:20px;cursor:pointer}
+  select{width:100%;background:var(--card);color:var(--ink);border:1px solid var(--line2);
+    border-radius:4px;padding:10px 11px;font:500 13.5px var(--sans);cursor:pointer}
+  .verdict{display:flex;align-items:center;gap:14px;margin:24px 0 4px;padding:15px 18px;
+    border:1px solid var(--line2);border-left-width:4px;border-radius:4px;
+    font:600 18px var(--serif)}
+  .verdict .badge{font:600 11px var(--mono);letter-spacing:.05em;padding:5px 9px;
+    border-radius:3px;color:var(--paper);white-space:nowrap}
+  .v-ok{border-left-color:var(--ok)} .v-ok .badge{background:var(--ok)}
+  .v-bad{border-left-color:var(--bad)} .v-bad .badge{background:var(--bad)}
+  .gates{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+  @media(max-width:760px){.gates{grid-template-columns:1fr}}
+  .gate{border:1px solid var(--line2);border-radius:4px;padding:15px;background:var(--card)}
+  .gate .h{display:flex;align-items:center;justify-content:space-between;
+    font:600 14px var(--sans);margin-bottom:10px}
+  .gate .st{font:600 10.5px var(--mono);padding:3px 7px;border-radius:3px;letter-spacing:.04em}
+  .st.pass{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+  .st.fail{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+  .gate .row{display:flex;justify-content:space-between;font:13px/1.85 var(--mono);color:var(--ink2)}
+  .gate .row b{color:var(--ink);font-weight:600}
+  .bar2{height:6px;border-radius:3px;background:var(--inset);overflow:hidden;margin-top:11px}
+  .bar2 i{display:block;height:100%;border-radius:3px}
+  .limiterline{margin-top:14px;font:13px var(--mono);color:var(--ink2)}
+  .limiterline b{color:var(--warn);font-weight:600}
+  .note{font:italic 13px/1.55 var(--serif);color:var(--faint);margin-top:14px}
+  .note code{font-style:normal}
+
+  /* ---- degradation + ladder ---- */
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:30px;align-items:start}
+  @media(max-width:760px){.split{grid-template-columns:1fr;gap:30px}}
+  .chartbox{border:1px solid var(--line2);border-radius:6px;padding:18px;background:var(--card)}
+  #degAxes line{stroke:var(--line2);stroke-width:1}
+  .degtext{fill:var(--faint);font:11px var(--mono)}
+  #degPath{fill:none;stroke:var(--accent);stroke-width:2.5}
+  #degFill{fill:var(--accent);opacity:.09;stroke:none}
+  .ladder{margin-top:6px}
+  .ladder .step{display:flex;gap:15px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .ladder .step:last-child{border-bottom:0}
+  .ladder .n{flex:0 0 28px;height:28px;border-radius:4px;display:grid;place-items:center;
+    background:transparent;border:1px solid var(--line2);font:600 13px var(--mono);color:var(--accent);
+    counter-increment:step}
+  .ladder{counter-reset:step}
+  .ladder .n::before{content:counter(step)}
+  .ladder .step b{font-weight:600}
+  .ladder .step p{margin:.15em 0 0;color:var(--ink2);font-size:14.5px}
+
+  /* ---- terminal ---- */
+  .term{background:var(--term);border:1px solid var(--line2);border-radius:6px;overflow:hidden}
+  .term .bar{display:flex;gap:7px;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .term .dot{width:11px;height:11px;border-radius:50%;opacity:.85}
+  .term .r{background:#c4554a}.term .y{background:#cf9c46}.term .g{background:#5a9c63}
+  .term pre{margin:0;padding:16px 18px;font:13px/1.65 var(--mono);overflow-x:auto;color:var(--term-ink)}
+  .term .cm{color:var(--term-mut)} .term .ok{color:#7bbf94} .term .pr{color:var(--accent)}
+
+  /* ---- redaction card ---- */
+  .panel{border:1px solid var(--line2);border-radius:6px;padding:22px;background:var(--card)}
+  .panel h3 .tagi{font:600 10px var(--mono);letter-spacing:.05em;text-transform:uppercase;
+    color:var(--accent);border:1px solid var(--line2);border-radius:3px;padding:2px 7px;margin-left:8px}
+  .panel p{color:var(--ink2);font-size:15px}
+  .chips{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font:600 11.5px var(--mono);color:var(--ink2);border:1px solid var(--line2);
+    border-radius:3px;padding:4px 9px;background:var(--paper2)}
+  .chip b{color:var(--accent)}
+
+  /* ---- cli verbs as a ledger ---- */
+  .verbs{margin-top:26px;border-top:1px solid var(--line)}
+  .verb{display:grid;grid-template-columns:180px 1fr;gap:20px;padding:16px 0;
+    border-bottom:1px solid var(--line);align-items:baseline}
+  .verb code{background:transparent;border:0;padding:0;font:600 14px var(--mono);color:var(--accent)}
+  .verb p{margin:0;color:var(--ink2);font-size:15px}
+  @media(max-width:620px){.verb{grid-template-columns:1fr;gap:5px}}
+
+  /* ---- two-column lists ---- */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:36px;margin-top:24px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr;gap:26px}}
+  .col{border-top:2px solid var(--ink);padding-top:16px}
+  .col h3{margin-bottom:.5em}
+  .col ul{margin:0;padding-left:18px;color:var(--ink2);font-size:15px}
+  .col li{margin:.4em 0}
+
+  .grids2{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}
+  @media(max-width:760px){.grids2{grid-template-columns:1fr}}
+
+  /* ---- footer ---- */
+  footer{border-top:1px solid var(--line);padding:34px 0 48px}
+  .foot{font:italic 14px/1.6 var(--serif);color:var(--faint);max-width:70ch}
+  .foot strong{font-style:normal;font-weight:600;color:var(--ink2)}
+  svg{max-width:100%;height:auto}
+
+  /* ---- glossary hover tooltips (pure CSS; definition lives inline in data-def) ---- */
+  .dfn{border-bottom:1px dotted var(--accent);cursor:help;position:relative;outline:none}
+  .dfn:hover,.dfn:focus-visible{color:var(--accent)}
+  .dfn::after{content:attr(data-def);position:absolute;left:0;top:calc(100% + 10px);z-index:30;
+    width:min(330px,74vw);background:var(--ink);color:var(--paper);padding:11px 13px;border-radius:7px;
+    font:400 13px/1.55 var(--sans);font-style:normal;letter-spacing:normal;text-transform:none;
+    white-space:normal;box-shadow:0 10px 34px rgba(0,0,0,.30);
+    opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s,transform .12s;
+    pointer-events:none}
+  .dfn::before{content:"";position:absolute;left:13px;top:calc(100% + 4px);z-index:31;
+    border:6px solid transparent;border-bottom-color:var(--ink);
+    opacity:0;visibility:hidden;transition:opacity .12s;pointer-events:none}
+  .dfn:hover::after,.dfn:focus-visible::after{opacity:1;visibility:visible;transform:translateY(0)}
+  .dfn:hover::before,.dfn:focus-visible::before{opacity:1;visibility:visible}
+  /* near the right edge, right-align the bubble so it doesn't clip */
+  .dfn.right::after{left:auto;right:0}
+  .dfn.right::before{left:auto;right:13px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+          <path d="M5 28 L14 13 L19 23 L24 9 L31 23 L35 16" fill="none" stroke="currentColor"
+            stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"/>
+          <circle cx="24" cy="9" r="2.3" style="fill:var(--accent)"/>
+        </svg>
+        <span class="name">analog-ready</span>
+        <span class="pill">Analog Robustness CI</span>
+      </div>
+      <button class="toggle" id="themeBtn" type="button">Light / Dark</button>
+    </div>
+  </div>
+</header>
+
+<!-- HERO -->
+<div class="wrap">
+  <div class="hero">
+    <span class="tag">AIMC-first · photonic MZI demo</span>
+    <h1>Does your model survive <span class="em">analog silicon</span>?</h1>
+    <p class="lede">A local-only toolchain that answers, for <em>your</em> PyTorch model on
+      <em>your</em> accelerator profile: which layers break under noise and quantization,
+      <strong>where analog stops beating digital</strong>, and what recovers the accuracy.</p>
+    <div class="cta">
+      <button class="btn primary" type="button"
+        onclick="document.getElementById('explore').scrollIntoView()">Try the break-even explorer</button>
+      <button class="btn" type="button"
+        onclick="document.getElementById('how').scrollIntoView()">How it works</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROBLEM -->
+<section id="why">
+  <div class="wrap">
+    <div class="eyebrow">The problem</div>
+    <h2>Analog accelerators are fast and cheap — until your model says otherwise</h2>
+    <p class="sub">Analog <span class="dfn" tabindex="0" data-def="Analog In-Memory Compute — doing the matrix multiplies directly inside a memory array, where the weights already sit, instead of moving data out to a digital ALU. Saves energy on the multiplies, but pays a conversion tax at the array edge.">in-memory compute</span> (<span class="dfn" tabindex="0" data-def="Phase-Change Memory — an analog cell that stores a weight as the conductance of a material switched between amorphous and crystalline states. Cheap to read, but the conductance drifts over time.">PCM</span>, <span class="dfn" tabindex="0" data-def="Resistive RAM — an analog cell that stores a weight as the conductance of a metal filament. Denser than PCM, but its programming and drift are more variable.">ReRAM</span>, <span class="dfn" tabindex="0" data-def="Static-RAM analog compute — weights held in digital SRAM cells but multiplied in the analog domain. Highest precision of the three and no conductance drift (it stores charge, not a physical conductance state), but lower density and higher energy per bit than PCM/ReRAM.">SRAM</span> crossbars) and coherent photonic meshes
+      promise large energy wins on matrix math. But they inject noise, clamp precision to a handful of
+      effective bits, and pay a steep price at every analog/digital boundary. Whether a given network
+      <em>actually</em> wins is a per-model, per-profile question — and device simulators answer it from
+      the chip's point of view, not the model's.</p>
+    <div class="points">
+      <div class="point">
+        <svg viewBox="0 0 32 32"><path d="M2 16 q4 -11 8 0 t8 0 t8 0"/></svg>
+        <h3>Noise &amp; drift</h3>
+        <p>Output noise, <span class="dfn" tabindex="0" data-def="The slow decay of an analog cell's stored conductance after programming — roughly a power law G(t) = G0·(t/t0)^-ν. Left uncorrected, accuracy erodes over hours to years; that's the retention curve.">conductance drift</span> and limited <span class="dfn" tabindex="0" data-def="Effective Number of Bits — the true precision of an analog signal path once noise is folded in, usually well below the nominal bit count. The precision gate checks the ENOB a layer needs against what the device actually delivers.">ENOB</span> ruin some layers and leave others
+          untouched. The value is knowing <em>which</em> — the report ranks fragile layers and shows
+          a <em>retention curve</em> (fidelity after a day / a year of drift).</p>
+      </div>
+      <div class="point">
+        <svg viewBox="0 0 32 32"><path d="M10 8 h12 a6 6 0 0 1 0 12 h-12 a6 6 0 0 0 0 12 h12"/><path d="M7 5 l3 3 l-3 3"/></svg>
+        <h3>The converter tax</h3>
+        <p><span class="dfn right" tabindex="0" data-def="Analog-to-Digital and Digital-to-Analog Converters — the circuits that translate between the analog array and the digital world at every tile boundary. Their energy (plus DRAM movement) often dominates the total, which is why cheap analog multiplies don't guarantee a win.">ADC/DAC</span> and <span class="dfn" tabindex="0" data-def="Dynamic RAM — the off-chip main memory holding weights and activations. Shuttling data to and from it is often the dominant energy cost, which is why an accelerator that only speeds up the multiplies may still not win overall.">DRAM</span> movement often dominate energy — up to ~10× the analog compute. Cheap MACs
+          don't help if conversions eat the budget.</p>
+      </div>
+      <div class="point">
+        <svg viewBox="0 0 32 32"><path d="M3 6 v20 h26"/><path d="M7 11 q8 0 10 7 t11 6"/></svg>
+        <h3>The break-even</h3>
+        <p>There is a frontier where analog stops being worth it. Everyone can inject noise; the
+          differentiated answer is <em>where that line falls for you</em>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how">
+  <div class="wrap">
+    <div class="eyebrow">How it works</div>
+    <h2>Instrument, cost-model, find the break-even, hand back a report</h2>
+    <p class="sub">No graph capture, no model surgery you can't audit. A recursive walker swaps
+      <code>nn.Linear</code>, <code>nn.Conv2d</code> and attention projections for noisy equivalents —
+      the same pattern aihwkit's <code>convert_to_analog</code> uses — so any architecture is cheap to
+      instrument and every step stays inspectable.</p>
+    <svg class="pipe" viewBox="0 0 980 188" role="img" aria-label="Four-stage pipeline: instrument, cost model, break-even, report">
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto">
+          <path d="M0,0 L6.5,3 L0,6 Z"/></marker>
+      </defs>
+      <rect x="6" y="44" width="210" height="100" rx="6"/>
+      <text class="t" x="24" y="74">1 · Instrument</text>
+      <text class="m" x="24" y="96">module-replacement walk;</text>
+      <text class="m" x="24" y="114">Noisy Linear / Conv2d +</text>
+      <text class="m" x="24" y="132">attn-proj matcher + coverage</text>
+      <line x1="220" y1="94" x2="252" y2="94" marker-end="url(#ar)"/>
+      <rect x="256" y="44" width="210" height="100" rx="6"/>
+      <text class="t" x="274" y="74">2 · Cost model</text>
+      <text class="m" x="274" y="96">compute + ADC/DAC +</text>
+      <text class="m" x="274" y="114">DRAM energy per op, each</text>
+      <text class="m" x="274" y="132">with source &amp; uncertainty</text>
+      <line x1="470" y1="94" x2="502" y2="94" marker-end="url(#ar)"/>
+      <rect class="hot" x="506" y="44" width="210" height="100" rx="6"/>
+      <text class="t" x="524" y="74">3 · Break-even</text>
+      <text class="m" x="524" y="96">the (X, Y, Z) envelope:</text>
+      <text class="m" x="524" y="114">the verdict, and where</text>
+      <text class="s" x="524" y="132">it flips — the spine</text>
+      <line x1="720" y1="94" x2="752" y2="94" marker-end="url(#ar)"/>
+      <rect x="756" y="44" width="218" height="100" rx="6"/>
+      <text class="t" x="774" y="74">4 · Report</text>
+      <text class="m" x="774" y="96">self-contained HTML / JSON,</text>
+      <text class="m" x="774" y="114">a redacted envelope to share,</text>
+      <text class="m" x="774" y="132">"Limits of this estimate"</text>
+    </svg>
+  </div>
+</section>
+
+<!-- EXPLORER -->
+<section id="explore">
+  <div class="wrap">
+    <div class="eyebrow">Interactive · the spine</div>
+    <h2>The break-even explorer</h2>
+    <p class="sub">This runs the <em>exact</em> three-gate logic from
+      <code>analog_ready/breakeven.py</code> live in your browser. Analog is <span class="dfn" tabindex="0" data-def="Whether analog beats digital for an op under this profile — true only when all three break-even gates clear: converter energy per MAC (X), weight reuse (Y), and required precision/ENOB (Z).">favorable</span> for an op only
+      if all three clear: converter energy per MAC undercuts the digital MAC it replaces
+      (<b>X</b>), weight reuse amortises the analog write energy (<b>Y</b>), and the required ENOB fits
+      the analog dynamic range (<b>Z</b>). Move the sliders and watch the verdict flip.</p>
+
+    <div class="explorer">
+      <div class="ctrls">
+        <div class="ctrl">
+          <label>Hardware profile <b id="vProf">—</b></label>
+          <select id="prof">
+            <option value="pcm">AIMC · PCM 4-bit (256×256)</option>
+            <option value="sram">AIMC · SRAM 8-bit (256×256)</option>
+            <option value="reram">AIMC · ReRAM ~6 ENOB (128×128)</option>
+            <option value="mzi">Photonic · Clements MZI (64×64)</option>
+          </select>
+          <div class="note" id="profNote"></div>
+        </div>
+        <div class="ctrl">
+          <label>Reduction dim K (contraction) <b id="vK"></b></label>
+          <input type="range" id="K" min="4" max="12" step="1" value="8">
+          <label style="margin-top:14px">Output dim N <b id="vN"></b></label>
+          <input type="range" id="N" min="4" max="12" step="1" value="8">
+          <label style="margin-top:14px">Weight reuse — MACs per weight <b id="vR"></b></label>
+          <input type="range" id="R" min="0" max="13" step="1" value="7">
+        </div>
+      </div>
+
+      <div class="verdict v-bad" id="verdict">
+        <span class="badge" id="vBadge">—</span>
+        <span id="vText">Adjust the controls…</span>
+      </div>
+
+      <div class="gates">
+        <div class="gate" id="gX">
+          <div class="h">X · Converter <span class="st fail">—</span></div>
+          <div class="row"><span>actual pJ/MAC</span><b class="a">—</b></div>
+          <div class="row"><span>must be &lt; digital MAC</span><b class="t">—</b></div>
+          <div class="bar2"><i></i></div>
+        </div>
+        <div class="gate" id="gY">
+          <div class="h">Y · Reuse <span class="st fail">—</span></div>
+          <div class="row"><span>actual reuse</span><b class="a">—</b></div>
+          <div class="row"><span>must be &gt; threshold</span><b class="t">—</b></div>
+          <div class="bar2"><i></i></div>
+        </div>
+        <div class="gate" id="gZ">
+          <div class="h">Z · Precision <span class="st fail">—</span></div>
+          <div class="row"><span>ENOB required</span><b class="a">—</b></div>
+          <div class="row"><span>must be &lt; ENOB avail</span><b class="t">—</b></div>
+          <div class="bar2"><i></i></div>
+        </div>
+      </div>
+      <div class="limiterline" id="limiter"></div>
+      <p class="note">Converter pJ/MAC follows the no-sharing tile model
+        <code>adc·⌈K/rows⌉/K + dac·⌈N/cols⌉/N</code>. ENOB required is the conservative envelope
+        <code>input_bits + ½·log₂K</code> (arXiv:2405.14978; 2401.15061 for the qualitative
+        ADC-pressure argument). Coefficients are literature
+        defaults — directional, not measured silicon.</p>
+    </div>
+  </div>
+</section>
+
+<!-- DEGRADATION + RECOVERY -->
+<section id="degrade">
+  <div class="wrap">
+    <div class="eyebrow">Sweeps &amp; recovery</div>
+    <h2>How hard does noise bite — and what claws it back?</h2>
+    <p class="sub">A degradation curve is the mean <span class="dfn" tabindex="0" data-def="Cosine similarity between the noisy output and the noiseless baseline, averaged per sample. 1.0 = identical direction. It is scale-invariant, so a uniform rescale reads as no degradation — which is why drift compensation matters.">cosine fidelity</span> of a layer's output against its
+      noiseless baseline, swept over a noise (σ), weight-bit, programming-noise or ADC-bit budget and
+      averaged over seeded draws. ADC readout is reported as a <em>bracket</em>: a best-case
+      auto-ranged number next to a per-tensor fixed-range one where outlier activations
+      <span class="dfn" tabindex="0" data-def="A fixed-range ADC covers a set fraction of the signal peak; values beyond it clip. Usually worse than best-case auto-ranging — but not a hard bound.">saturate</span>.
+      Per-layer quant-scale calibration then recovers fidelity by spending precision where the weights
+      actually live instead of on outliers — never worse than the naive range at σ=0.</p>
+    <div class="split">
+      <div class="chartbox">
+        <div class="ctrl"><label>Layer signal RMS (robustness) <b id="vS"></b></label>
+          <input type="range" id="S" min="1" max="40" step="1" value="14"></div>
+        <svg id="degChart" viewBox="0 0 460 240" role="img" aria-label="A degradation curve: fidelity falls as output noise rises">
+          <g id="degAxes">
+            <line x1="46" y1="200" x2="440" y2="200"/><line x1="46" y1="16" x2="46" y2="200"/>
+          </g>
+          <text class="degtext" x="40" y="24" text-anchor="end">1.0</text>
+          <text class="degtext" x="40" y="204" text-anchor="end">0</text>
+          <text class="degtext" x="46" y="222" text-anchor="middle">0</text>
+          <text class="degtext" x="440" y="222" text-anchor="end">σ →</text>
+          <text class="degtext" x="243" y="235" text-anchor="middle">output noise σ</text>
+          <path id="degFill"/>
+          <path id="degPath"/>
+        </svg>
+        <p class="note">Illustrative shape; real curves come from <code>analog-ready sweep</code>.</p>
+      </div>
+      <div>
+        <h3>Recovery, framed honestly</h3>
+        <p class="sub" style="margin-bottom:18px">The tool reports calibrated fidelity against the same
+          cosine metric it calibrates on — so "never worse than naive at σ=0" is a real guarantee, not a
+          fixture artifact. The naming stays honest as the evidence grows:</p>
+        <div class="ladder">
+          <div class="step"><span class="n"></span><div><b>Analog Robustness CI.</b>
+            <p>Simulated noise, no hardware — what you can run today.</p></div></div>
+          <div class="step"><span class="n"></span><div><b>Profile-Conditioned QAT.</b>
+            <p>Vendor-characterised profiles drive the recovery recipe.</p></div></div>
+          <div class="step"><span class="n"></span><div><b>Calibration / QAT Runtime.</b>
+            <p>Only once measured-device data backs the word "calibration".</p></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST -->
+<section id="trust">
+  <div class="wrap">
+    <div class="eyebrow">Trust surface</div>
+    <h2>Runs behind your firewall. Share only a redacted envelope.</h2>
+    <p class="sub">A hardware vendor's noise/precision/energy profile is crown-jewel IP. The whole
+      design is built so they never have to hand it over: the container runs locally, redaction lives in
+      the data model, and <code>doctor</code> makes the posture auditable.</p>
+    <div class="grids2">
+      <div class="term">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+<pre><span class="cm"># prove the local-only posture</span>
+$ <span class="pr">analog-ready</span> doctor --local-only
+  mode:               local-only
+  network access:     <span class="ok">disabled</span>
+  telemetry:          none
+  model export:       <span class="ok">disabled</span>
+  profile export:     <span class="ok">disabled</span>
+  profile redaction:  <span class="ok">enabled</span>
+  backends:
+    - mzi_pure       available
+    - aimc_simple    available
+    - aimc_aihwkit   unavailable (no aihwkit)</pre>
+      </div>
+      <div class="panel">
+        <h3>Per-field redaction <span class="tagi">in the data model</span></h3>
+        <p>Every profile field declares how it may leave the tool — <code>exact_ok</code> (verbatim),
+          <code>bucket</code> (coarsened to an order-of-magnitude band), or <code>hidden</code> (never
+          emitted, even via <code>repr</code>). The shareable report carries the qualitative verdicts; a
+          <code>hidden</code> coefficient like <code>mem_energy_pj_per_byte</code> simply never
+          appears.</p>
+        <div class="chips">
+          <span class="chip">exact_ok → <b>8</b></span>
+          <span class="chip">bucket → <b>1..10</b></span>
+          <span class="chip">hidden → <b>∅</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CLI -->
+<section id="cli">
+  <div class="wrap">
+    <div class="eyebrow">The surface</div>
+    <h2>One CLI, eight verbs</h2>
+    <p class="sub">Everything the report shows is reproducible from the command line — pure-PyTorch
+      defaults, network-free.</p>
+    <div class="verbs">
+      <div class="verb"><code>doctor</code><p>Audit the local-only posture and backend availability.</p></div>
+      <div class="verb"><code>analyze</code><p>Per-op cost, score and break-even, written to a self-contained HTML/JSON report.</p></div>
+      <div class="verb"><code>sweep</code><p>A degradation curve over output σ, weight-bits, faithful <span class="dfn right" tabindex="0" data-def="The error when a weight is written onto an analog cell: a proportional part that scales with the weight's magnitude, plus a fixed read floor. The physically-grounded replacement for 'just add some Gaussian noise'.">weight-programming noise</span> (<code>prog_sigma</code>), or <span class="dfn right" tabindex="0" data-def="Effective Number of Bits — the true precision of an analog signal path once noise is folded in. adc_bits quantizes each layer's output to that many effective bits over its own per-sample dynamic range, deterministic (no draw variance).">ADC readout precision</span> (<code>adc_bits</code>), seeded and reproducible.</p></div>
+      <div class="verb"><code>demo photonic-mzi</code><p>The pure-PyTorch Clements mesh demo — zero third-party deps.</p></div>
+      <div class="verb"><code>eval</code><p>Real task accuracy on a labelled set — clean vs under an illustrative noise stress.</p></div>
+      <div class="verb"><code>regress</code><p>The CI primitive: gate a run against a baseline, fail closed, emit a redacted envelope.</p></div>
+      <div class="verb"><code>validate</code><p>One-command, byte-deterministic validation curve plus a recovery recipe.</p></div>
+      <div class="verb"><code>pilot</code><p>Run the stored measured-silicon references through the composite — an honest <em>indicative</em> check (the A0 baseline reproduction is still pending), never a claimed validated pass.</p></div>
+    </div>
+    <div class="term" style="margin-top:26px">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+<pre>$ <span class="pr">analog-ready</span> analyze --model gpt2_block --profile aimc_pcm_4bit \
+      --out report.html --redact --local-only
+  <span class="cm">→ wrote report.html (per-op break-even; no hidden coefficient leaked)</span>
+
+$ <span class="pr">analog-ready</span> regress --baseline prev.json --current now.json --redact
+  <span class="ok">PASS</span> <span class="cm"># favorability &amp; fidelity within tolerance; envelope on stdout</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- LIMITS -->
+<section id="limits">
+  <div class="wrap">
+    <div class="eyebrow">Honesty</div>
+    <h2>Limits of this estimate</h2>
+    <p class="sub">The credibility of the whole thing depends on never overclaiming. v0 is explicit about
+      what it is and is not.</p>
+    <div class="cols">
+      <div class="col">
+        <h3>What it is</h3>
+        <ul>
+          <li>Directional, relative energy and favorability claims, with uncertainty bands.</li>
+          <li>Architecture-broad instrumentation via module replacement — reported coverage, not "100%".</li>
+          <li>A conservative precision envelope — "fails the envelope under this profile", not "numerically wrong".</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>What it is not (yet)</h3>
+        <ul>
+          <li>No measured-silicon calibration; coefficients are literature defaults.</li>
+          <li>No absolute "analog is N× better" claim — only the break-even frontier.</li>
+          <li>No mass/area model; a single-pass DRAM lower bound; CPU tiles.</li>
+          <li>Drift applies to the signed weight, not a G⁺−G⁻ differential pair — it understates
+            drift of near-zero weights; ADC quantises per-sample, not per output column.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p class="foot"><strong>analog-ready</strong> — Analog Robustness CI, AIMC-first with photonics as
+      the public demo. Built test-first against an immutable acceptance oracle; the break-even envelope is
+      the spine that must not slip. This page is a standalone explainer — it loads no network resources
+      and runs entirely offline. Apache-2.0 · source &amp; citation:
+      <code>github.com/demirelo/analog-ready</code>.</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  // ---- theme ----
+  var root=document.documentElement, btn=document.getElementById('themeBtn');
+  function setT(t){root.setAttribute('data-theme',t);}
+  setT('light');   // paper is the designed default; the toggle switches to ink
+  btn.addEventListener('click',function(){setT(root.getAttribute('data-theme')==='light'?'dark':'light');});
+
+  // ---- profiles (key cost-model fields from analog_ready/profiles/*.yaml; a curated subset for
+  //      this calculator, not the full field set — e.g. adc_full_scale / noise coeffs live in the YAML) ----
+  var P={
+    pcm :{input_bits:4,enob:6.0,rows:256,cols:256,adc:3.17,dac:10.0,dmac:0.07,prog:5.0,wbits:4,
+          note:"PCM crossbar. Cheap MACs, but a 5 pJ weight write sets a high reuse bar (Y≈71)."},
+    sram:{input_bits:4,enob:8.0,rows:256,cols:256,adc:3.17,dac:10.0,dmac:0.07,prog:1.0,wbits:8,
+          note:"SRAM-analog. ~8 ENOB and a cheap reprogram (Y≈14) — the friendliest profile."},
+    reram:{input_bits:4,enob:6.0,rows:128,cols:128,adc:3.17,dac:10.0,dmac:0.07,prog:3.5,wbits:4,
+          note:"ReRAM. Smaller 128² arrays make the converter gate (X) harder to clear."},
+    mzi :{input_bits:4,enob:8.0,rows:64,cols:64,adc:3.17,dac:10.0,dmac:0.07,prog:3.5,wbits:6,
+          note:"Photonic 64-wide mesh. Converters can't be amortised at this size — X fails by design."}
+  };
+  var pow2=function(e){return Math.round(Math.pow(2,e));};
+  var el=function(id){return document.getElementById(id);};
+  var prof=el('prof'),K=el('K'),N=el('N'),R=el('R'),S=el('S');
+
+  function fmt(x,d){d=d==null?3:d; if(x>=1000)return x.toExponential(2);
+    return Number(x).toLocaleString(undefined,{maximumFractionDigits:d});}
+
+  function setGate(node, ok, aTxt, tTxt, frac){
+    var g=el(node), st=g.querySelector('.st'), bar=g.querySelector('.bar2 i');
+    st.textContent=ok?'PASS':'FAIL'; st.className='st '+(ok?'pass':'fail');
+    g.querySelector('.a').textContent=aTxt; g.querySelector('.t').textContent=tTxt;
+    var f=Math.max(.04,Math.min(1,frac));
+    bar.style.width=(f*100).toFixed(0)+'%';
+    bar.style.background=ok?'var(--ok)':'var(--bad)';
+  }
+
+  function recompute(){
+    var p=P[prof.value];
+    var k=pow2(+K.value), n=pow2(+N.value), reuse=pow2(+R.value);
+    el('vK').textContent=k; el('vN').textContent=n; el('vR').textContent=reuse;
+    el('vProf').textContent=prof.value.toUpperCase();
+    el('profNote').textContent=p.note;
+
+    // X — converter pJ/MAC (no-sharing tile model), must be < digital MAC
+    var convA = p.adc*Math.ceil(k/p.rows)/k + p.dac*Math.ceil(n/p.cols)/n;
+    var okX = convA < p.dmac;
+    setGate('gX', okX, fmt(convA,4), '< '+fmt(p.dmac,3), p.dmac/convA);
+
+    // Y — reuse threshold = program / digital_mac
+    var y = p.dmac? p.prog/p.dmac : 0;
+    var okY = reuse > y;
+    setGate('gY', okY, fmt(reuse,0), '> '+fmt(y,1), reuse/(y||1));
+
+    // Z — enob_req = input_bits + 0.5*log2(K), must be < enob_avail
+    var enobReq = p.input_bits + 0.5*Math.log2(Math.max(k,1));
+    var okZ = enobReq < p.enob;
+    setGate('gZ', okZ, fmt(enobReq,2), '< '+fmt(p.enob,1), p.enob/enobReq);
+
+    var fav = okX && okY && okZ;
+    var v=el('verdict');
+    v.className='verdict '+(fav?'v-ok':'v-bad');
+    el('vBadge').textContent=fav?'ANALOG FAVORABLE':'NOT FAVORABLE';
+    el('vText').textContent = fav
+      ? 'All three gates clear — analog wins for this op under this profile.'
+      : 'At least one gate fails — digital wins here.';
+
+    // dominant limiter: the gate with the worst margin ratio
+    var fails=[];
+    if(!okX) fails.push(['converter (X)', convA/p.dmac]);
+    if(!okY) fails.push(['reuse (Y)', y/(reuse||1e-9)]);
+    if(!okZ) fails.push(['precision (Z)', enobReq/p.enob]);
+    var lim=el('limiter');
+    if(fails.length){ fails.sort(function(a,b){return b[1]-a[1];});
+      lim.innerHTML='Dominant limiter: <b>'+fails[0][0]+'</b>'+
+        (fails.length>1?' (+'+(fails.length-1)+' more)':'')+
+        ' — raise it above threshold to flip the verdict.';
+    } else { lim.innerHTML='No limiter — every constraint has headroom.'; }
+  }
+
+  // ---- degradation curve ----
+  function drawDeg(){
+    var s=+S.value/10; el('vS').textContent=s.toFixed(1);
+    var x0=46,x1=440,y0=200,y1=16, smax=0.5, pts=[], fillPts=[];
+    for(var i=0;i<=60;i++){
+      var sigma=smax*i/60;
+      var fid=1/Math.sqrt(1+Math.pow(sigma/s,2)); // cosine fidelity vs additive noise
+      var px=x0+(x1-x0)*(sigma/smax), py=y0+(y1-y0)*fid;
+      pts.push((i?'L':'M')+px.toFixed(1)+' '+py.toFixed(1));
+      fillPts.push(px.toFixed(1)+' '+py.toFixed(1));
+    }
+    el('degPath').setAttribute('d', pts.join(' '));
+    el('degFill').setAttribute('d','M'+x0+' '+y0+' L'+fillPts.join(' L')+' L'+x1+' '+y0+' Z');
+  }
+
+  [prof,K,N,R].forEach(function(c){c.addEventListener('input',recompute);});
+  S.addEventListener('input',drawDeg);
+  recompute(); drawDeg();
+})();
+</script>
+</body>
+</html>

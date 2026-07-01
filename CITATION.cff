@@ -1,0 +1,68 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "analog-ready: Analog Robustness CI for AI accelerators"
+authors:
+  - family-names: Demirel
+    given-names: Omer
+version: 0.1.0
+date-released: 2026-07-01
+repository-code: "https://github.com/demirelo/analog-ready"
+license: Apache-2.0
+abstract: >-
+  A PyTorch toolchain that answers whether an AI model survives analog in-memory
+  compute (PCM/ReRAM/SRAM crossbars) or photonic hardware: a per-op break-even
+  envelope (converter energy, weight reuse, ENOB precision), a simulation ladder
+  (programming noise, conductance drift, ADC quantization, end-of-life composition),
+  and a redaction-safe reporting/regression-gate surface. All simulation
+  coefficients are literature defaults, not measured silicon; limits are disclosed
+  at the point of use.
+references:
+  - type: article
+    title: "A 64-core mixed-signal in-memory compute chip based on phase-change memory for deep neural network inference"
+    authors:
+      - family-names: Le Gallo
+        given-names: Manuel
+    journal: "Nature Electronics"
+    volume: 6
+    year: 2023
+    identifiers:
+      - type: other
+        value: "arXiv:2212.02872"
+  - type: article
+    title: "Accurate deep neural network inference using computational phase-change memory"
+    authors:
+      - family-names: Joshi
+        given-names: Vinay
+    journal: "Nature Communications"
+    volume: 11
+    year: 2020
+    identifiers:
+      - type: other
+        value: "arXiv:1906.03138"
+  - type: article
+    title: "LightCode: Compiling LLM Inference for Photonic-Electronic Systems"
+    authors:
+      - family-names: Tomich
+        given-names: Ryan
+      - family-names: Zhong
+        given-names: Zhizhen
+      - family-names: Englund
+        given-names: Dirk
+    year: 2025
+    identifiers:
+      - type: other
+        value: "arXiv:2509.16443"
+  - type: article
+    title: "Analog or Digital In-memory Computing? Benchmarking through Quantitative Modeling"
+    authors:
+      - family-names: Sun
+        given-names: Jiacong
+      - family-names: Houshmand
+        given-names: Pouya
+      - family-names: Verhelst
+        given-names: Marian
+    year: 2024
+    identifiers:
+      - type: other
+        value: "arXiv:2405.14978"

@@ -1,0 +1,24 @@
+{
+  "passed": false,
+  "failures": [
+    "fidelity dropped 0.131 (> tol 0.05)"
+  ],
+  "deltas": {
+    "favorability": 0.0,
+    "fidelity": -0.1312132552266121
+  },
+  "profile_redacted": {
+    "weight_bits": 4,
+    "input_bits": 4,
+    "enob_avail": "1..10",
+    "array_rows": 256,
+    "array_cols": 256,
+    "mac_energy_pj": "0.01..0.1",
+    "adc_energy_pj": "1..10",
+    "dac_energy_pj": "10..100",
+    "digital_mac_energy_pj": 0.07,
+    "weight_program_energy_pj": "1..10",
+    "peak_flops": "1.0e12",
+    "peak_bw_bytes": "1.0e11"
+  }
+}

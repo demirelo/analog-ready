@@ -1,0 +1,42 @@
+name: aimc_pcm_4bit
+visibility: private
+# Phase-change-material analog in-memory crossbar, 4-bit weights. Coefficients are
+# literature defaults (LightCode arXiv:2509.16443; AIMC amortisation arXiv:2405.14978),
+# NOT measured silicon — see the report's "Limits of this estimate" section.
+fields:
+  weight_bits:            {value: 4,       redaction: exact_ok}
+  input_bits:             {value: 4,       redaction: exact_ok}
+  enob_avail:             {value: 6.0,     redaction: bucket, unit: bits, provenance: literature,
+                           source: "AIMC ENOB survey arXiv:2405.14978", uncertainty: "+-1 bit"}
+  # Fixed-range ADC full-scale as a FRACTION of the signal peak (W12): <1 means the peaks saturate.
+  # exact_ok (unlike enob_avail's bucket): a fraction of the signal's OWN peak, not an absolute
+  # device coefficient, so it reveals no crown-jewel IP.
+  adc_full_scale:         {value: 0.9,     redaction: exact_ok, provenance: estimate,
+                           uncertainty: "design-dependent"}
+  array_rows:             {value: 256,     redaction: exact_ok}
+  array_cols:             {value: 256,     redaction: exact_ok}
+  mac_energy_pj:          {value: 0.04,    redaction: bucket}
+  adc_energy_pj:          {value: 3.17,    redaction: bucket, unit: pJ, provenance: literature,
+                           source: "LightCode arXiv:2509.16443", uncertainty: "+-50%"}
+  dac_energy_pj:          {value: 10.0,    redaction: bucket}
+  mem_energy_pj_per_byte: {value: 0.1,     redaction: hidden}
+  digital_mac_energy_pj:  {value: 0.07,    redaction: exact_ok}
+  weight_program_energy_pj: {value: 5.0,   redaction: bucket}   # PCM write; sets reuse threshold Y
+  peak_flops:             {value: 1.0e12,  redaction: exact_ok}
+  peak_bw_bytes:          {value: 1.0e11,  redaction: exact_ok}
+  # Analog weight-programming noise (W7): proportional programming-error + read/thermal floor,
+  # see analog_ready/device_noise.py. PCM cells program imprecisely (temporal DRIFT is NOT modeled
+  # here — a later rung); literature-plausible
+  # defaults (aihwkit RPUConfig; Joshi 2020 arXiv:1906.03138; Le Gallo 2023 arXiv:2212.02872),
+  # NOT measured silicon. Hidden: a vendor's characterised noise floor is crown-jewel IP.
+  prog_noise_sigma:       {value: 0.08,    redaction: hidden}
+  read_noise_sigma:       {value: 0.02,    redaction: hidden}
+  # Conductance DRIFT (W8): power-law decay G(t) = G0*(t/t0)^-nu, see analog_ready/drift.py.
+  # drift_nu is the mean drift exponent -- a broadly published PCM materials constant (~0.05-0.1
+  # in the literature; Joshi 2020 arXiv:1906.03138; Le Gallo 2023 arXiv:2212.02872; aihwkit
+  # PCMLikeNoiseModel uses the same power-law form), so it is bucket-shareable. drift_sigma_nu is
+  # the device-to-device spread in that exponent -- the parameter that actually degrades accuracy
+  # over time (uniform drift is just a cosine-invisible global scale) -- and is characterisation
+  # IP, so hidden. Literature-plausible defaults, not measured silicon.
+  drift_nu:               {value: 0.06,    redaction: bucket}
+  drift_sigma_nu:         {value: 0.03,    redaction: hidden}

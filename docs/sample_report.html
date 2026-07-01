@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Analog-Ready Report — GPT2Block / aimc_pcm_4bit</title>
+<style>
+
+body{font-family:system-ui,sans-serif;max-width:900px;margin:2rem auto;color:#1a1a2e;
+     background:#f8f9fa;padding:0 1rem}
+h1{color:#0d1b2a;border-bottom:3px solid #4a90d9;padding-bottom:.4rem}
+h2{color:#1b4f72;margin-top:2rem}
+table{width:100%;border-collapse:collapse;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+th{background:#1b4f72;color:#fff;padding:.5rem .75rem;text-align:left}
+td{padding:.45rem .75rem;border-bottom:1px solid #dee2e6}
+tr:last-child td{border-bottom:none}
+tr:nth-child(even) td{background:#f1f5f9}
+.good{color:#155724;font-weight:600}
+.bad{color:#721c24;font-weight:600}
+.flip-yes{background:#d4edda;padding:.2rem .5rem;border-radius:3px}
+.flip-no{background:#f8d7da;padding:.2rem .5rem;border-radius:3px}
+.limits{background:#fff3cd;border-left:4px solid #ffc107;padding:1rem 1.2rem;
+        border-radius:0 4px 4px 0;margin-top:1rem}
+.limits h2{margin-top:0;color:#856404}
+.limits ul{margin:.5rem 0 0 1.2rem;padding:0}
+.limits li{margin:.3rem 0}
+.redacted-note{background:#e7f1ff;border-left:4px solid #4a90d9;padding:.6rem 1rem;
+        border-radius:0 4px 4px 0;margin:1rem 0;font-size:.9rem;color:#1b4f72}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;
+              margin-bottom:1.5rem}
+.summary-card{background:#fff;border:1px solid #dee2e6;border-radius:6px;padding:.8rem 1rem;
+              text-align:center}
+.summary-card .val{font-size:1.4rem;font-weight:700;color:#1b4f72}
+.summary-card .lbl{font-size:.8rem;color:#666;margin-top:.2rem}
+
+</style>
+</head>
+<body>
+<h1>Analog-Ready Report</h1>
+<p><strong>Model:</strong> GPT2Block &nbsp;|&nbsp;
+   <strong>Profile:</strong> aimc_pcm_4bit</p>
+
+<div class="summary-grid">
+<div class="summary-card"><div class="val">0/4</div><div class="lbl">Ops favorable (break-even)</div></div><div class="summary-card"><div class="val">1.07 µJ</div><div class="lbl">Total estimated energy</div></div><div class="summary-card"><div class="val"><span class="flip-no">No</span></div><div class="lbl">Sensitivity / verdict flip</div></div>
+</div>
+
+<h2>Cost-Model Spine — per-op breakdown</h2>
+<p>Energy components: <b>compute</b> (analog MACs) + <b>conversion</b> (ADC/DAC) + <b>DRAM</b> movement. Break-even verdict per op.</p>
+<table>
+<thead>
+<tr>
+<th>Op</th><th>Compute</th><th>Conversion</th><th>DRAM</th><th>Total</th><th>Break-even</th><th>Dominant limiter</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>attn.c_attn</td><td>62.91 nJ</td><td>159.83 nJ</td><td>3.48 nJ</td><td>226.22 nJ</td><td><span class="bad">✗ unfavorable</span></td><td>precision (ENOB_req 7.0 &gt;= enob_avail 6.0)</td></tr>
+<tr><td>attn.c_proj</td><td>20.97 nJ</td><td>107.89 nJ</td><td>1.43 nJ</td><td>130.29 nJ</td><td><span class="bad">✗ unfavorable</span></td><td>precision (ENOB_req 7.0 &gt;= enob_avail 6.0)</td></tr>
+<tr><td>mlp.0</td><td>83.89 nJ</td><td>185.79 nJ</td><td>4.51 nJ</td><td>274.19 nJ</td><td><span class="bad">✗ unfavorable</span></td><td>precision (ENOB_req 7.0 &gt;= enob_avail 6.0)</td></tr>
+<tr><td>mlp.2</td><td>83.89 nJ</td><td>353.65 nJ</td><td>3.28 nJ</td><td>440.81 nJ</td><td><span class="bad">✗ unfavorable</span></td><td>precision (ENOB_req 8.0 &gt;= enob_avail 6.0)</td></tr>
+</tbody>
+</table>
+
+<h2>Sensitivity — where the verdict flips</h2>
+<p>No flip detected across the ENOB sweep (5 points).</p>
+
+<h2>Programming-noise robustness — at this profile's operating point</h2>
+<p>Output fidelity under the profile's characterised weight-programming noise (proportional
+programming noise + a read floor, both hidden device parameters): <b>0.9647</b>
+(1.0 = unaffected). <em>Simulated literature-default model, not measured silicon; this is the
+programming-noise effect alone; when the profile declares conductance drift, the End-of-life section
+below composes it with drift and ADC.</em></p>
+
+<h2>Retention — accuracy over time</h2>
+<p>Output fidelity vs the noiseless baseline, at increasing elapsed time since programming, under
+this profile's own analog conductance-drift model (see <code>analog_ready/drift.py</code>). The
+first row (t0) is the programming reference — fidelity 1.0 by definition.
+<em>Simulated literature-default power-law drift, not measured silicon. To first order a uniform
+drift rate is a global scale that periodic recalibration largely corrects; the degradation shown is
+dominated by device-to-device variability in the drift rate, which recalibration cannot undo.
+Recalibration itself is not modelled here.</em></p>
+<table>
+<thead><tr><th>Elapsed time</th><th>Fidelity</th></tr></thead>
+<tbody>
+<tr><td>1 s</td><td>1.0000</td></tr>
+<tr><td>1 hr</td><td>0.8607</td></tr>
+<tr><td>1 day</td><td>0.7891</td></tr>
+<tr><td>1 mo</td><td>0.7111</td></tr>
+<tr><td>1 yr</td><td>0.6510</td></tr>
+</tbody>
+</table>
+
+<h2>ADC readout precision</h2>
+<p>Output fidelity with every eligible layer's output read back through a simulated ADC at this
+profile's own ENOB (effective number of bits): <b>0.9862</b> (1.0 = unaffected). <em>Uses the
+profile's literature-default ENOB, not measured silicon; this is the ADC effect alone (composed with
+the others in the End-of-life section when the profile declares drift). This is an <b>optimistic</b>
+number: the model auto-ranges to each sample's own peak
+(an idealised ADC reference), so a real fixed-range ADC is usually worse — often materially so for
+outlier / high-dynamic-range activations (though not a hard bound; see the realistic fixed-range
+number below).</em></p>
+
+<h2>ADC readout — per-tensor fixed-range (clipped)</h2>
+<p>Output fidelity under a <b>fixed</b>-range ADC (one full-scale per output tensor, covering the
+profile's <code>adc_full_scale</code> fraction of the signal peak — values beyond it saturate):
+<b>0.9899</b> (1.0 = unaffected), with <b>0.54%</b> of the signal saturating. <em>A more realistic
+counterpart to the best-case auto-ranged number above — usually below it, but not a hard bound: a
+tighter per-tensor range can occasionally beat a wide per-sample one on multi-axis (e.g.
+attention/sequence) outputs. This is a <b>per-tensor clipped-ADC stress</b>, not an absolute
+calibration: the full-scale is still derived from the signal's own peak (a fraction of it), not a
+measured device reference, and it clips per-tensor rather than per-output-column.</em></p>
+
+<h2>End-of-life — all effects combined</h2>
+<p>Output fidelity vs the clean baseline with conductance drift, weight-programming noise, and ADC
+readout precision <b>composed together</b> from this profile — the honest "what does the model
+actually produce on this chip after this long" number, not any single effect in isolation.
+<em>Read it directionally, not as a rigorous bound: it inherits every component caveat
+(literature-default, not-measured noise / drift / ENOB, and the best-case auto-ranged ADC) and is a
+noisy mean over seeded draws, so a real deployment is likely worse.</em></p>
+<table>
+<thead><tr><th>Elapsed time</th><th>Combined fidelity</th></tr></thead>
+<tbody>
+<tr><td>1 s</td><td>0.9575</td></tr>
+<tr><td>1 hr</td><td>0.8524</td></tr>
+<tr><td>1 day</td><td>0.7867</td></tr>
+<tr><td>1 mo</td><td>0.7126</td></tr>
+<tr><td>1 yr</td><td>0.6566</td></tr>
+</tbody>
+</table>
+
+<h2>Coverage — what instrumentation actually replaced</h2>
+<p>Of <b>4</b> eligible modules, <b>4</b> Linear and
+<b>0</b> Conv2d were replaced. Attention-projection match rate:
+<b>1.00</b>. Coverage confidence: <b>high</b>. No unhandled linear-like modules.</p>
+
+<h2>Sensitivity — most-fragile layers</h2>
+<p>Each row injects noise on ONE layer's output only — <b>scaled to that layer's output
+magnitude</b>, so the ranking reflects sensitivity rather than output scale — holding every other
+layer exact, and measures whole-model output fidelity vs the noiseless baseline. Most fragile
+first.</p>
+<table>
+<thead><tr><th>Layer</th><th>Fidelity</th><th>Fidelity drop</th></tr></thead>
+<tbody>
+<tr><td>attn.c_attn</td><td>0.9550</td><td>4.50%</td></tr>
+<tr><td>mlp.0</td><td>0.9964</td><td>0.36%</td></tr>
+<tr><td>attn.c_proj</td><td>0.9965</td><td>0.35%</td></tr>
+<tr><td>mlp.2</td><td>0.9969</td><td>0.31%</td></tr>
+</tbody>
+</table>
+
+<h2>Recovery — what recovers accuracy</h2>
+<p>Per-layer calibrated quantisation recipe for the most fragile <b>Linear</b> layers (Conv2d
+fragility is reported in Sensitivity above but is not yet recoverable). Recovered fidelity is never
+worse than the naive degraded baseline.</p>
+<table>
+<thead><tr><th>Layer</th><th>Bits</th><th>Degraded fidelity</th><th>Recovered fidelity</th>
+<th>Gain</th></tr></thead>
+<tbody>
+<tr><td>attn.c_attn</td><td>4</td><td>0.9887</td><td>0.9928</td><td>0.41%</td></tr>
+</tbody>
+</table>
+
+<h2>Validation — published silicon to check against</h2>
+<p>Measured / published accelerator operating points this tool's predictions can be checked against
+by running the matching workload. These are <b>references</b>, not a claim that this run has been
+validated against hardware.</p>
+<table>
+<thead><tr><th>Reference</th><th>Reported accuracy</th><th>Kind</th><th>Citation</th></tr></thead>
+<tbody>
+<tr><td>IBM HERMES Project Chip — ResNet-9/CIFAR-10 (PCM, TDP)</td><td>92.81%</td><td>measured</td><td>Le Gallo, M. et al. &quot;A 64-core mixed-signal in-memory compute chip based on phase-change memory for deep neural network inference.&quot; Nature Electronics 6, 680-693 (2023). arXiv:2212.02872.</td></tr>
+<tr><td>IBM PCM inference — ResNet-32/CIFAR-10 (1-day drift RETENTION)</td><td>&ge;93.50%</td><td>measured</td><td>Joshi, V. et al. &quot;Accurate deep neural network inference using computational phase-change memory.&quot; Nature Communications 11, 2473 (2020). arXiv:1906.03138.</td></tr>
+</tbody>
+</table>
+
+<div class="limits">
+<h2>Limits of this estimate</h2>
+<ul>
+<li>All energy estimates use <em>literature defaults</em>, not measured silicon. Uncertainty: ±50%
+    on energy per MAC/conversion, ±2x on DRAM movement.</li>
+<li>DRAM is a <em>single-pass lower bound</em> (weights once + activations). Partial-sum
+    re-streaming and tile weight re-loads are excluded (v0.1 refinement).</li>
+<li>Converter sharing is pessimistic (no inter-tile DAC sharing). An optimistic shared-DAC design
+    would lower conversion energy.</li>
+<li>Latency estimates are placeholders and do not enter any verdict.</li>
+<li>ADC readout fidelity auto-ranges per sample (an optimistic, idealised ADC reference); a real
+    fixed-range ADC is usually worse, especially for outlier-heavy activations — though not a hard
+    bound. It also quantises per-sample rather than per output column.</li>
+<li>Weight-programming noise (prog/read sigma) and conductance drift over time both use
+    <em>literature defaults</em>, not measured silicon; the programming-noise model is proportional
+    noise + a static read floor, and neither models 1/f noise, drift-compensation/recalibration, or
+    cycling. Drift is applied to the <em>signed weight</em>, not a G+/G&minus; differential
+    conductance pair — this understates drift of near-zero weights (whose real pair would drift
+    them away from zero). Each effect is reported per-effect above; when the profile declares
+    conductance drift, the End-of-life section composes them.</li>
+<li>Results apply only to the analysed workload shape; out-of-distribution inputs may shift
+    the break-even point.</li>
+</ul>
+</div>
+
+</body>
+</html>
