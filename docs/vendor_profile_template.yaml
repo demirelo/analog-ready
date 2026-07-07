@@ -38,6 +38,15 @@ fields:
   mac_energy_pj:          {value: 0.04,   redaction: bucket,   unit: "pJ/MAC",
                            source: "e.g. LightCode arXiv:2509.16443 or your silicon", provenance: literature}
   adc_energy_pj:          {value: 3.17,   redaction: bucket,   unit: "pJ/conversion"}
+  # OPTIONAL — couple ADC energy to resolution. Default (field absent) = flat: `adc_energy_pj` is a
+  # flat per-conversion cost independent of ENOB. Set `coupled` to price it as f(ENOB) via the
+  # Murmann ADC-survey FoM trend, so an ENOB sweep also moves the X (converter-energy) gate, not just
+  # the Z (precision) gate. In coupled mode `adc_energy_pj` is the energy AT `adc_energy_ref_enob`,
+  # scaled to this profile's `enob_avail`. `adc_energy_enob_base`: 2.0 = Walden default (energy
+  # doubles per bit), 4.0 = thermal-noise bound (quadruples). A modeling choice, not IP:
+  # adc_energy_model:       {value: coupled, redaction: exact_ok}
+  # adc_energy_ref_enob:    {value: 8.0,     redaction: exact_ok, unit: "bits"}
+  # adc_energy_enob_base:   {value: 2.0,     redaction: exact_ok}
   dac_energy_pj:          {value: 10.0,   redaction: bucket,   unit: "pJ/conversion"}
   mem_energy_pj_per_byte: {value: 0.1,    redaction: hidden,   unit: "pJ/byte"}
   digital_mac_energy_pj:  {value: 0.07,   redaction: exact_ok, unit: "pJ/MAC"}

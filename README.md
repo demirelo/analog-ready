@@ -93,6 +93,14 @@ Analog is favorable for an op **only if all three clear**:
 | **Y · reuse** | `weight_reuse > weight_program_energy / digital_mac` | reuse must amortise the analog weight write |
 | **Z · precision** | `enob_required < enob_avail`, `enob_required = input_bits + ½·log₂K` | the required ENOB must fit the analog dynamic range |
 
+> **ADC energy vs resolution (X↔Z coupling).** By default `adc_energy_pj` is a flat per-conversion
+> coefficient, so the X (converter) and Z (precision) gates move independently. Real ADC energy
+> scales ~2^ENOB–4^ENOB with effective resolution (Murmann ADC-survey Walden/Schreier FoMs). Set
+> `adc_energy_model: coupled` on a profile to price ADC energy as f(ENOB), so an ENOB sweep also
+> moves the converter-energy gate — the real economics cliff, not two decoupled gates. Flat stays
+> the default for v0.1 back-compat; see `docs/vendor_profile_template.yaml` and
+> `analog_ready/cost_model.py::adc_energy_pj_for_enob`.
+
 The report shows each op's verdict, its **dominant limiter**, and a sensitivity sweep where the
 verdict flips — the bottom-line *"where analog stops winning."* With a model + inputs it also
 surfaces real **task accuracy** under noise, **programming-noise robustness** at the profile's
