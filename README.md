@@ -1,5 +1,8 @@
 # analog-ready — Analog Robustness CI
 
+[![CI](https://github.com/demirelo/analog-ready/actions/workflows/ci.yml/badge.svg)](https://github.com/demirelo/analog-ready/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 > *Does your model survive your accelerator's noise / quantization / drift / converter budget,
 > which layers break, where does analog stop beating digital, and what recovers accuracy?
 > Runs behind your firewall; share only a redacted envelope.*
@@ -31,7 +34,7 @@ pip install -e '.[aimc]'    # aihwkit
 pip install -e '.[mzi]'     # torchonn
 ```
 
-## The CLI — one tool, eight verbs
+## The CLI — one tool, nine verbs
 
 ```bash
 # 1. Prove the local-only posture (auditable trust contract)
@@ -52,16 +55,20 @@ analog-ready sweep --model mlp --param adc_bits --values 8,6,4,3 --out adc.json
 # 4. The photonic demo — pure-PyTorch Clements mesh, zero third-party deps
 analog-ready demo photonic-mzi --n 8
 
-# 5. The recurring-CI primitive: gate a current run against a baseline; fail closed
-analog-ready regress --baseline prev.json --current now.json --redact --out envelope.json
+# 5. Emit a run-summary JSON — the record the regress gate compares (commit it once as a baseline)
+analog-ready summarize --model mlp --profile aimc_pcm_4bit --out baseline.json
 
-# 6. One-command, byte-deterministic validation curve + a recovery recipe
+# 6. The recurring-CI primitive: re-emit the summary and gate it against the baseline; fail closed
+analog-ready summarize --model mlp --profile aimc_pcm_4bit --out now.json
+analog-ready regress --baseline baseline.json --current now.json --redact --out envelope.json
+
+# 7. One-command, byte-deterministic validation curve + a recovery recipe
 analog-ready validate --benchmark synthetic_gemm --out validation.json
 
-# 7. Real task accuracy on a labelled set — clean vs under an illustrative noise stress
+# 8. Real task accuracy on a labelled set — clean vs under an illustrative noise stress
 analog-ready eval --model classifier --profile aimc_pcm_4bit --seed 0
 
-# 8. Run the stored MEASURED-silicon references through the composite (indicative; A0 baseline pending)
+# 9. Run the stored MEASURED-silicon references through the composite (indicative; A0 baseline pending)
 analog-ready pilot --out pilot.json
 ```
 
@@ -126,6 +133,44 @@ The resulting [`envelope.json`](docs/examples/envelope.json) reports
 `"fidelity dropped 0.131 (> tol 0.05)"` and ships the **redacted profile** — `enob_avail` coarsened
 to `"1..10"`, the hidden `mem_energy_pj_per_byte` omitted entirely. Nothing a vendor would object to
 leaving their firewall.
+
+### Drop-in GitHub Action
+
+The CI is literal: `analog-ready` ships a composite action ([`action.yml`](action.yml)) that
+summarizes a run and gates it against a **committed baseline**, failing the job on a real
+regression. Generate the baseline once (`analog-ready summarize … --out ci/baseline.json`) and
+commit it, then:
+
+```yaml
+# .github/workflows/analog-ready.yml
+name: analog-ready gate
+on: [push, pull_request]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4          # your repo: the committed baseline (+ optional profile)
+      - uses: demirelo/analog-ready@v0.1.0
+        with:
+          model: mlp
+          profile: aimc_pcm_4bit           # a builtin name, or a path to your profile YAML
+          baseline: ci/baseline.json
+          redact: "true"                    # the written envelope is safe to publish
+```
+
+Prefer a reusable workflow? Call
+[`.github/workflows/regress.yml`](.github/workflows/regress.yml) directly:
+
+```yaml
+jobs:
+  gate:
+    uses: demirelo/analog-ready/.github/workflows/regress.yml@v0.1.0
+    with: { model: mlp, profile: aimc_pcm_4bit, baseline: ci/baseline.json }
+```
+
+Exit codes are fail-closed: `0` no regression, `1` a regression (favorability/fidelity drop or a
+break-even flip), `2` an unreadable baseline — each fails the job so a real regression can't slip
+through silently.
 
 ## Interactive explainer
 

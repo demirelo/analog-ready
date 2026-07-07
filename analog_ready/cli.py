@@ -1,6 +1,7 @@
 """`analog-ready` CLI. Subcommands:
 
   doctor    — audit local-only posture and backend availability (W1).
+  summarize — emit a run-summary JSON (the record `regress` compares as a committed baseline).
   regress   — gate a run-summary against a baseline (W3).
   analyze   — build a zoo model, load a profile, write HTML + JSON report (W4).
   sweep     — degradation curve over sigma, weight_bits, prog_sigma, or adc_bits (W4/W7/W9).
@@ -101,6 +102,48 @@ def _regress(baseline: str, current: str, out: str | None, redact: bool) -> int:
     else:
         print(blob)
     return 0 if result.passed else 1
+
+
+# --------------------------------------------------------------------------- summarize
+
+def _summarize(model_name: str, profile_arg: str, out: str | None, ref_sigma: float,
+               draws: int, seed: int) -> int:
+    """Emit the deterministic run-summary record `regress` consumes as its `--baseline`/`--current`.
+    This is the PRODUCER half of the recurring-CI convention: commit the summary once as a baseline,
+    then re-emit it each run and `regress` against it. Returns 0 on success; 2 on a bad model/profile."""
+    import json
+
+    import yaml
+
+    from analog_ready.zoo import build, example_inputs
+    from analog_ready.regress import summarize
+
+    try:
+        model = build(model_name).eval()
+    except (KeyError, ValueError):
+        print(f"summarize: unknown --model {model_name!r}", file=sys.stderr)
+        return 2
+    try:
+        profile = _load_profile_arg(profile_arg)
+    except (OSError, KeyError, ValueError, yaml.YAMLError) as e:
+        print(f"summarize: could not load --profile {profile_arg!r}: {e}", file=sys.stderr)
+        return 2
+    # Real inputs drive the fidelity metric; fall back to no-input (fidelity=1.0) if the model has
+    # no registered example inputs, matching `analyze`.
+    try:
+        inputs = example_inputs(model_name)
+    except Exception:
+        inputs = None
+    record = summarize(model, profile, inputs=inputs, ref_sigma=ref_sigma, draws=draws, seed=seed)
+    # sort_keys + indent=2 matches the committed docs/examples/*.json baseline format exactly, so a
+    # generated baseline diffs cleanly against a hand-checked one.
+    blob = json.dumps(record, indent=2, sort_keys=True)
+    if out:
+        with open(out, "w") as f:
+            f.write(blob)
+    else:
+        print(blob)
+    return 0
 
 
 # --------------------------------------------------------------------------- analyze
@@ -324,6 +367,17 @@ def main(argv=None) -> int:
     doc.add_argument("--local-only", action="store_true",
                      help="assert a network-free, no-upload, redaction-on run")
 
+    # summarize
+    sm = sub.add_parser("summarize",
+                        help="emit a run-summary JSON (the baseline record the regress gate compares)")
+    sm.add_argument("--model", required=True, help="zoo model name")
+    sm.add_argument("--profile", required=True, help="builtin profile name or path to .yaml")
+    sm.add_argument("--out", default=None, help="write the run-summary JSON here (else stdout)")
+    sm.add_argument("--ref-sigma", type=float, default=0.1, dest="ref_sigma",
+                    help="noise sigma at which the fidelity metric is measured (default 0.1)")
+    sm.add_argument("--draws", type=int, default=8, help="stochastic draws for the fidelity metric")
+    sm.add_argument("--seed", type=int, default=0, help="RNG seed")
+
     # regress
     reg = sub.add_parser("regress", help="gate a current run-summary against a baseline (the recurring-CI gate)")
     reg.add_argument("--baseline", required=True, help="baseline run-summary JSON")
@@ -393,6 +447,8 @@ def main(argv=None) -> int:
 
     if args.command == "doctor":
         return _doctor(local_only=getattr(args, "local_only", False))
+    if args.command == "summarize":
+        return _summarize(args.model, args.profile, args.out, args.ref_sigma, args.draws, args.seed)
     if args.command == "regress":
         return _regress(args.baseline, args.current, args.out, args.redact)
     if args.command == "analyze":
