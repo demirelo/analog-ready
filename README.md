@@ -93,13 +93,14 @@ Analog is favorable for an op **only if all three clear**:
 | **Y · reuse** | `weight_reuse > weight_program_energy / digital_mac` | reuse must amortise the analog weight write |
 | **Z · precision** | `enob_required < enob_avail`, `enob_required = input_bits + ½·log₂K` | the required ENOB must fit the analog dynamic range |
 
-> **ADC energy vs resolution (X↔Z coupling).** By default `adc_energy_pj` is a flat per-conversion
-> coefficient, so the X (converter) and Z (precision) gates move independently. Real ADC energy
-> scales ~2^ENOB–4^ENOB with effective resolution (Murmann ADC-survey Walden/Schreier FoMs). Set
-> `adc_energy_model: coupled` on a profile to price ADC energy as f(ENOB), so an ENOB sweep also
-> moves the converter-energy gate — the real economics cliff, not two decoupled gates. Flat stays
-> the default for v0.1 back-compat; see `docs/vendor_profile_template.yaml` and
-> `analog_ready/cost_model.py::adc_energy_pj_for_enob`.
+> **ADC energy vs resolution.** By default `adc_energy_pj` is a flat per-conversion coefficient,
+> preserving the v0.1 model. A profile may opt into `adc_energy_model: coupled`; in that mode
+> `adc_energy_pj` is an anchor at `adc_energy_ref_enob` and is scaled to the separate nominal
+> converter resolution `adc_enob_for_energy`. It is deliberately not scaled from `enob_avail`, which
+> is the delivered system ENOB after device and signal-chain losses. The `[2, 4]` per-bit base is a
+> literature FoM trend, not a universal silicon law; see
+> `analog_ready/cost_model.py::adc_energy_pj_for_enob` and the
+> [Optical Transformers ADC anchor](https://arxiv.org/abs/2302.10360).
 
 The report shows each op's verdict, its **dominant limiter**, and a sensitivity sweep where the
 verdict flips — the bottom-line *"where analog stops winning."* With a model + inputs it also
@@ -166,8 +167,9 @@ and correctness-audit rounds. Every increment's acceptance tests remain in `test
 2. **v1 — Profile-Conditioned QAT Runtime**: vendor-characterised profiles drive the recovery recipe.
 3. **v2 — Calibration / QAT Runtime**: only once measured-device data backs the word "calibration".
 
-Coefficients are **literature defaults** (LightCode arXiv:2509.16443; AIMC amortisation
-arXiv:2405.14978), **not measured silicon**. Claims are directional and relative, with uncertainty
+Coefficients are **literature defaults** (LightCode arXiv:2509.16443; Optical Transformers
+arXiv:2302.10360; AIMC amortisation arXiv:2405.14978), **not measured silicon**. Claims are
+directional and relative, with uncertainty
 bands — never "analog is N× better." See every report's *"Limits of this estimate"* section.
 What stands between this release and the word *"validated"* is stated precisely in the
 [**measured-validation roadmap**](docs/ROADMAP.md).

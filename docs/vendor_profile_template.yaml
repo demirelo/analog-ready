@@ -7,16 +7,17 @@
 #   hidden   — never emitted anywhere: not in redacted output, not via repr(), and no derived
 #              value that would let a reader recover it appears in shareable artifacts
 #
-# The professional schema (all optional, but strongly recommended for measured values):
+# The professional metadata schema (all metadata optional, but strongly recommended for measured
+# values):
 #   unit             — e.g. "pJ", "pJ/byte", "bits"
 #   source           — citation / datasheet / measurement-report identifier
 #   uncertainty      — e.g. "+/-50%", "1-sigma 0.3"
 #   provenance       — one of: literature | measured | estimate
 #   calibration_date — ISO date the value was measured, if provenance is "measured"
 #
-# Fields marked REQUIRED are consumed by the cost model / break-even gates; the tool raises a
-# clear error naming any missing one. Fields marked OPTIONAL enable additional report sections
-# (noise robustness, retention, ADC fidelity) and are simply skipped when absent.
+# Fields marked REQUIRED are consumed by the cost model / break-even gates or the analysis report;
+# the tool raises a clear error naming any missing one. Fields marked OPTIONAL enable additional
+# report sections (noise robustness, retention, fixed-range ADC fidelity) and are skipped when absent.
 
 name: vendor_example          # your profile's name (appears in reports)
 visibility: private
@@ -25,7 +26,7 @@ fields:
   array_rows:             {value: 256,    redaction: exact_ok, unit: "rows"}
   array_cols:             {value: 256,    redaction: exact_ok, unit: "cols"}
 
-  # ---- precision (REQUIRED: weight_bits, input_bits; enob_avail drives the Z gate + ADC model) ----
+  # ---- precision (REQUIRED: weight_bits, input_bits, enob_avail drives the Z gate) ----
   weight_bits:            {value: 4,      redaction: exact_ok, unit: "bits"}
   input_bits:             {value: 4,      redaction: exact_ok, unit: "bits"}
   enob_avail:             {value: 6.0,    redaction: bucket,   unit: "bits",
@@ -37,15 +38,18 @@ fields:
   # ---- energy coefficients (REQUIRED) — all in picojoules ----
   mac_energy_pj:          {value: 0.04,   redaction: bucket,   unit: "pJ/MAC",
                            source: "e.g. LightCode arXiv:2509.16443 or your silicon", provenance: literature}
-  adc_energy_pj:          {value: 3.17,   redaction: bucket,   unit: "pJ/conversion"}
-  # OPTIONAL — couple ADC energy to resolution. Default (field absent) = flat: `adc_energy_pj` is a
-  # flat per-conversion cost independent of ENOB. Set `coupled` to price it as f(ENOB) via the
-  # Murmann ADC-survey FoM trend, so an ENOB sweep also moves the X (converter-energy) gate, not just
-  # the Z (precision) gate. In coupled mode `adc_energy_pj` is the energy AT `adc_energy_ref_enob`,
-  # scaled to this profile's `enob_avail`. `adc_energy_enob_base`: 2.0 = Walden default (energy
-  # doubles per bit), 4.0 = thermal-noise bound (quadruples). A modeling choice, not IP:
+  adc_energy_pj:          {value: 3.17,   redaction: bucket,   unit: "pJ/conversion",
+                           source: "Optical Transformers arXiv:2302.10360 (7-bit ADC); reused by LightCode arXiv:2509.16443",
+                           provenance: literature}
+  # OPTIONAL — couple ADC energy to NOMINAL converter resolution. The default is flat. In coupled
+  # mode, adc_energy_pj is the anchor at adc_energy_ref_enob; it is not scaled from enob_avail,
+  # which is the delivered system ENOB after signal-chain/device losses. The [2, 4] base is a
+  # literature FoM trend (Walden-like to thermal-noise-like), not a measured silicon law.
   # adc_energy_model:       {value: coupled, redaction: exact_ok}
-  # adc_energy_ref_enob:    {value: 8.0,     redaction: exact_ok, unit: "bits"}
+  # adc_enob_for_energy:    {value: 7.0,     redaction: exact_ok, unit: "bits",
+  #                          source: "converter design target / datasheet", provenance: measured}
+  # adc_energy_ref_enob:    {value: 7.0,     redaction: exact_ok, unit: "bits",
+  #                          source: "Optical Transformers arXiv:2302.10360", provenance: literature}
   # adc_energy_enob_base:   {value: 2.0,     redaction: exact_ok}
   dac_energy_pj:          {value: 10.0,   redaction: bucket,   unit: "pJ/conversion"}
   mem_energy_pj_per_byte: {value: 0.1,    redaction: hidden,   unit: "pJ/byte"}
@@ -65,6 +69,6 @@ fields:
   drift_sigma_nu:         {value: 0.02,   redaction: hidden}
                           # device-to-device nu spread — this, not nu itself, drives accuracy loss
 
-  # ---- roofline context (OPTIONAL) ----
+  # ---- roofline context (REQUIRED for `analyze`; optional only for cost-only callers) ----
   peak_flops:             {value: 5.0e12, redaction: exact_ok, unit: "FLOP/s"}
   peak_bw_bytes:          {value: 1.0e11, redaction: exact_ok, unit: "B/s"}

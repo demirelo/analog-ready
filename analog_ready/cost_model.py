@@ -1,6 +1,6 @@
 """The system-level cost model — the spine. Energy splits into compute (analog MACs) + ADC/DAC
 conversion + DRAM movement (LightCode framing: converters + memory movement, not the analog MACs,
-dominate system energy). With LightCode's own coefficients (0.04 pJ analog MAC, 3.17 pJ 8-bit ADC,
+dominate system energy). With the cited coefficients (0.04 pJ analog MAC, 3.17 pJ 7-bit ADC,
 10 pJ DAC) the CONVERTER share alone, DERIVED here, ranges from ~1.3x the analog compute at 256-wide
 arrays to ~10x at 32-wide (adding DRAM movement: ~2.6x / ~11.7x for the same square shapes) — ratios
 we compute from the coefficients per op shape/precision/array size, not figures LightCode reports
@@ -13,13 +13,7 @@ Modelling assumptions (conservative, stated so a reviewer can check them):
   count replicates across row-tiles, k_tiles). An optimistic shared-DAC design lower-bounds DAC
   conversions at M*K.
 - DRAM is a single-pass lower bound (weights once + activations); it excludes partial-sum
-  re-streaming and weight re-loads for non-resident tiles (a v0.1 refinement).
-- ADC conversion energy is FLAT per conversion by default (back-compat with v0.1's coefficients and
-  oracles). A profile may OPT IN to a resolution-COUPLED model (`adc_energy_model: coupled`) that
-  scales conversion energy with effective ADC resolution (ENOB) via the Murmann ADC-survey figure-
-  of-merit trend — see `adc_energy_pj_for_enob`. This is what couples the X (converter-energy) and
-  Z (precision) break-even gates, which a flat per-conversion coefficient leaves physically
-  independent even though real ADC energy grows ~2^ENOB..4^ENOB with resolution."""
+  re-streaming and weight re-loads for non-resident tiles (a v0.1 refinement)."""
 from __future__ import annotations
 
 import math
@@ -41,44 +35,14 @@ class Coefficient:
 # provenance for each profile coefficient the estimate consumes: (unit, source, uncertainty).
 _PROVENANCE = {
     "mac_energy_pj": ("pJ/MAC", "LightCode arXiv:2509.16443 (analog MAC ~0.04 pJ)", "+/-50%"),
-    "adc_energy_pj": ("pJ/conversion", "LightCode arXiv:2509.16443 (8b ADC ~3.17 pJ)", "+/-50%"),
+    "adc_energy_pj": ("pJ/conversion",
+                       "Optical Transformers arXiv:2302.10360 (7b ADC, 3.17 pJ/sample); "
+                       "reused as a LightCode arXiv:2509.16443 assumption",
+                       "+/-50%"),
     "dac_energy_pj": ("pJ/conversion", "LightCode arXiv:2509.16443 (DAC ~10 pJ)", "+/-50%"),
     "mem_energy_pj_per_byte": ("pJ/byte", "DRAM movement, LightCode system model", "+/-2x"),
     "digital_mac_energy_pj": ("pJ/MAC", "digital MAC baseline this op would replace", "+/-50%"),
 }
-
-
-# --- ADC energy vs resolution (the X<->Z coupling) --------------------------------------------
-# A flat per-conversion `adc_energy_pj` treats converter energy (the X gate) as independent of ADC
-# resolution (the Z gate, `enob_avail`) — but they are physically coupled: converter energy is the
-# central tension of AIMC economics. B. Murmann's long-running "ADC Performance Survey" (ISSCC/VLSI,
-# 1997-present) tracks two figures of merit whose empirical near-constancy pins the scaling:
-#   * Walden FoM_W = P / (f_s * 2^ENOB) ~ const  =>  E_conv = FoM_W * 2^ENOB   (energy DOUBLES per
-#     effective bit; the quantization-noise-limited regime most SAR/AIMC readout ADCs live in,
-#     roughly ENOB < ~10).
-#   * Schreier/thermal FoM_S = SNDR + 10*log10(f_s / (2*P)) ~ const  =>  E_conv ~ 4^ENOB   (energy
-#     QUADRUPLES per bit; the thermal-noise-limited regime at high ENOB, where halving noise per bit
-#     costs 4x capacitance/power).
-# So real converter energy grows ~2^ENOB..4^ENOB with effective resolution. `adc_energy_pj` is then
-# read as the energy AT `ADC_ENERGY_REF_ENOB` and scaled from there. Like every other coefficient
-# here this is a LITERATURE FoM TREND, not measured silicon — same labeling as the rest of the model.
-ADC_ENERGY_REF_ENOB = 8.0     # the resolution LightCode's 3.17 pJ 8-bit ADC coefficient is quoted at
-ADC_ENERGY_ENOB_BASE = 2.0    # per-bit energy multiplier: 2.0 = Walden default; 4.0 = thermal bound
-
-
-def adc_energy_pj_for_enob(enob, ref_energy_pj, *, ref_enob: float = ADC_ENERGY_REF_ENOB,
-                           base: float = ADC_ENERGY_ENOB_BASE) -> float:
-    """Resolution-coupled ADC conversion energy: `ref_energy_pj` is the per-conversion energy at
-    `ref_enob` effective bits, scaled by `base ** (enob - ref_enob)`. `base` in [2, 4] spans the
-    Walden (quantization-limited) to Schreier/thermal (noise-limited) regimes of the Murmann ADC
-    survey (see the module comment). Pure arithmetic — no torch. Literature FoM trend, not measured
-    silicon."""
-    enob, ref_energy_pj, ref_enob, base = float(enob), float(ref_energy_pj), float(ref_enob), float(base)
-    if not (math.isfinite(base) and base > 0):
-        raise ValueError(f"adc energy scaling base must be finite and > 0 (got {base})")
-    if not (math.isfinite(enob) and math.isfinite(ref_enob)):
-        raise ValueError(f"enob and ref_enob must be finite (got enob={enob}, ref_enob={ref_enob})")
-    return ref_energy_pj * base ** (enob - ref_enob)
 
 
 @dataclass
@@ -128,6 +92,12 @@ def _field_str(profile, key: str, default: str) -> str:
     return str(profile.fields[key].value) if key in profile.fields else default
 
 
+# The cited Optical Transformers model uses 3.17 pJ for a 7-bit ADC output sample. The coupled
+# model is deliberately opt-in because this is a literature trend, not a measured device model.
+ADC_ENERGY_REF_ENOB = 7.0
+ADC_ENERGY_ENOB_BASE = 2.0
+
+
 def dram_bytes(feat, weight_bits: float, input_bits: float, output_bits: float = 8.0) -> float:
     """Single-pass lower bound on bytes moved: weights once + activations. Excludes partial-sum
     re-streaming and weight re-loads for non-resident tiles (a v0.1 refinement). Shared by the cost
@@ -139,6 +109,27 @@ def dram_bytes(feat, weight_bits: float, input_bits: float, output_bits: float =
     conservative. Override explicitly for a wider-output design."""
     return (feat.weight_numel * weight_bits + feat.act_in_numel * input_bits
             + feat.act_out_numel * output_bits) / 8.0
+
+
+def adc_energy_pj_for_enob(enob, ref_energy_pj, *, ref_enob: float = ADC_ENERGY_REF_ENOB,
+                           base: float = ADC_ENERGY_ENOB_BASE) -> float:
+    """Scale an anchored ADC energy with nominal converter ENOB.
+
+    `ref_energy_pj` is the per-conversion energy at `ref_enob` effective bits. The allowed base
+    range [2, 4] covers the usual Walden-like and thermal-noise-like sensitivity assumptions. This
+    is a literature FoM trend, not measured silicon, and must not be confused with the system's
+    delivered `enob_avail` after device noise and signal-chain losses.
+    """
+    enob, ref_energy_pj, ref_enob, base = (float(enob), float(ref_energy_pj), float(ref_enob),
+                                           float(base))
+    if not (math.isfinite(base) and 2.0 <= base <= 4.0):
+        raise ValueError(f"adc energy scaling base must be finite and in [2, 4] (got {base})")
+    if not (math.isfinite(enob) and enob >= 0.0 and math.isfinite(ref_enob) and ref_enob >= 0.0):
+        raise ValueError(f"enob and ref_enob must be finite and >= 0 (got enob={enob}, "
+                         f"ref_enob={ref_enob})")
+    if not (math.isfinite(ref_energy_pj) and ref_energy_pj > 0.0):
+        raise ValueError(f"reference ADC energy must be finite and > 0 (got {ref_energy_pj})")
+    return ref_energy_pj * base ** (enob - ref_enob)
 
 
 _REQUIRED_FIELDS = ("array_rows", "array_cols", "weight_bits", "input_bits",
@@ -158,21 +149,19 @@ def estimate_op(feat, profile) -> OpCost:
     mac_e, adc_e, dac_e = _val(profile, "mac_energy_pj"), _val(profile, "adc_energy_pj"), _val(profile, "dac_energy_pj")
     mem_e = _val(profile, "mem_energy_pj_per_byte")
 
-    # X<->Z coupling (OPT-IN; default "flat" preserves v0.1 numbers + the committed oracles). Set
-    # `adc_energy_model: coupled` on a profile to price ADC energy as f(ENOB) instead of a flat
-    # per-conversion coefficient: `adc_energy_pj` is then the energy at `adc_energy_ref_enob`
-    # (default 8 b, the resolution LightCode's 3.17 pJ is quoted at) and is scaled to the profile's
-    # own `enob_avail` by the Murmann ADC-survey FoM trend. This makes an ENOB sweep move the
-    # converter-energy (X) gate, not just the precision (Z) gate. See adc_energy_pj_for_enob.
-    if _field_str(profile, "adc_energy_model", "flat").strip().lower() == "coupled":
-        if "enob_avail" not in profile.fields:
-            raise ValueError(f"profile {getattr(profile, 'name', '?')!r} sets adc_energy_model="
-                             f"'coupled' but declares no enob_avail (the resolution ADC energy "
-                             f"couples to)")
-        adc_e = adc_energy_pj_for_enob(
-            _val(profile, "enob_avail"), adc_e,
-            ref_enob=_val_or(profile, "adc_energy_ref_enob", ADC_ENERGY_REF_ENOB),
-            base=_val_or(profile, "adc_energy_enob_base", ADC_ENERGY_ENOB_BASE))
+    adc_model = _field_str(profile, "adc_energy_model", "flat").strip().lower()
+    if adc_model not in {"flat", "coupled"}:
+        raise ValueError(f"profile {getattr(profile, 'name', '?')!r} has unknown "
+                         f"adc_energy_model {adc_model!r}; expected 'flat' or 'coupled'")
+    adc_enob = adc_ref_enob = adc_base = None
+    if adc_model == "coupled":
+        if "adc_enob_for_energy" not in profile.fields:
+            raise ValueError(f"profile {getattr(profile, 'name', '?')!r} sets "
+                             "adc_energy_model='coupled' but declares no adc_enob_for_energy")
+        adc_enob = _val(profile, "adc_enob_for_energy")
+        adc_ref_enob = _val_or(profile, "adc_energy_ref_enob", ADC_ENERGY_REF_ENOB)
+        adc_base = _val_or(profile, "adc_energy_enob_base", ADC_ENERGY_ENOB_BASE)
+        adc_e = adc_energy_pj_for_enob(adc_enob, adc_e, ref_enob=adc_ref_enob, base=adc_base)
 
     k_tiles = math.ceil(feat.K / rows)
     n_tiles = math.ceil(feat.N / cols)
@@ -191,6 +180,13 @@ def estimate_op(feat, profile) -> OpCost:
     latency_ns = float(feat.M * k_tiles * n_tiles)
     converter_pj_per_mac = conversion_pj / feat.macs if feat.macs else 0.0
     coeffs = {k: _coeff(profile, k) for k in _PROVENANCE}
+    if adc_model == "coupled":
+        unit, source, unc = _PROVENANCE["adc_energy_pj"]
+        coeffs["adc_energy_effective_pj"] = Coefficient(
+            adc_e, unit,
+            f"{source}; coupled at nominal ENOB={adc_enob:g} "
+            f"(ref ENOB={adc_ref_enob:g}, base={adc_base:g})",
+            unc)
     return OpCost(feat.name, feat.macs, compute_pj, conversion_pj, dram_pj, total_pj,
                   latency_ns, converter_pj_per_mac, coeffs)
 
