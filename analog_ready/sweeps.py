@@ -163,7 +163,10 @@ def profile_adc_fixed(model, inputs, profile, *, draws: int = 1,
     baseline = _baseline(model, inputs)
     fixed = _instrumented_fidelity(model, baseline, inputs,
                                    FixedADCQuant(float(bits), float(frac)), draws=draws, seed=seed)
-    saturation = adc_saturation_fraction(baseline, float(frac) * float(baseline.abs().max()))
+    # Keep the saturation metric aligned with FixedADCQuant's 1e-12 zero-signal guard: an
+    # all-zero model output has no out-of-range samples, rather than an invalid zero full-scale.
+    full_scale = max(float(frac) * float(baseline.abs().max()), 1e-12)
+    saturation = adc_saturation_fraction(baseline, full_scale)
     return fixed, saturation
 
 

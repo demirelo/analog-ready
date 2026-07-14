@@ -3,14 +3,13 @@ name: analog-ready regression gate
 # Reusable workflow: call it from another repo with
 #   jobs:
 #     gate:
-#       uses: demirelo/analog-ready/.github/workflows/regress.yml@v0.1.0
+#       uses: demirelo/analog-ready/.github/workflows/regress.yml@main
 #       with:
 #         model: mlp
-#         profile: profiles/my_device.yaml   # a path in YOUR checkout, or a builtin name
+#         profile: profiles/my_device.yaml
 #         baseline: ci/analog-ready-baseline.json
 #
-# `on: workflow_call` means this never runs on push/PR of THIS repo — only when another workflow
-# calls it — so it cannot break analog-ready's own CI.
+# `on: workflow_call` means this runs only when another workflow calls it.
 on:
   workflow_call:
     inputs:
@@ -19,28 +18,31 @@ on:
         required: true
         type: string
       profile:
-        description: "builtin profile name or a path in the caller's checkout"
+        description: "builtin profile name or a path in the caller checkout"
         required: true
         type: string
       baseline:
-        description: "path (in the caller's checkout) to the committed baseline run-summary JSON"
+        description: "path in the caller checkout to the committed baseline JSON"
         required: true
         type: string
       ref:
-        description: "analog-ready git ref to install (tag/branch/sha)"
+        description: "analog-ready git ref to install (tag, branch, or full SHA)"
         required: false
         type: string
-        default: "v0.1.0"
+        default: "main"
       python-version:
         description: "Python version to run the gate on"
         required: false
         type: string
         default: "3.12"
       redact:
-        description: "omit the model identity from the shared envelope"
+        description: "omit model identity and derived numeric deltas from the envelope"
         required: false
         type: boolean
-        default: false
+        default: true
+
+permissions:
+  contents: read
 
 jobs:
   regress:
@@ -55,24 +57,51 @@ jobs:
           python-version: ${{ inputs.python-version }}
 
       - name: Install analog-ready
-        run: pip install "analog-ready @ git+https://github.com/demirelo/analog-ready@${{ inputs.ref }}"
+        env:
+          ANALOG_READY_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$ANALOG_READY_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "install: ref contains unsupported characters" >&2
+            exit 2
+          fi
+          pip install "analog-ready @ git+https://github.com/demirelo/analog-ready@$ANALOG_READY_REF"
 
       - name: Summarize current run
-        run: >-
-          analog-ready summarize
-          --model "${{ inputs.model }}"
-          --profile "${{ inputs.profile }}"
-          --out analog-ready-current.json
+        env:
+          ANALOG_MODEL: ${{ inputs.model }}
+          ANALOG_PROFILE: ${{ inputs.profile }}
+          ANALOG_CURRENT: ${{ runner.temp }}/analog-ready-current.json
+        run: |
+          set -euo pipefail
+          analog-ready summarize \
+            --model "$ANALOG_MODEL" \
+            --profile "$ANALOG_PROFILE" \
+            --out "$ANALOG_CURRENT"
 
       - name: Regress against committed baseline (fail-closed)
+        env:
+          ANALOG_BASELINE: ${{ inputs.baseline }}
+          ANALOG_CURRENT: ${{ runner.temp }}/analog-ready-current.json
+          ANALOG_PROFILE: ${{ inputs.profile }}
+          ANALOG_ENVELOPE: analog-ready-envelope.json
+          ANALOG_REDACT: ${{ inputs.redact }}
         run: |
-          redact_flag=""
-          if [ "${{ inputs.redact }}" = "true" ]; then redact_flag="--redact"; fi
+          set -euo pipefail
+          baseline_abs="$(realpath -m -- "$ANALOG_BASELINE")"
+          envelope_abs="$(realpath -m -- "$ANALOG_ENVELOPE")"
+          if [[ "$baseline_abs" == "$envelope_abs" ]]; then
+            echo "regress: envelope path must not overwrite baseline" >&2
+            exit 2
+          fi
+          args=()
+          if [[ "$ANALOG_REDACT" == "true" ]]; then args+=(--redact); fi
           analog-ready regress \
-            --baseline "${{ inputs.baseline }}" \
-            --current analog-ready-current.json \
-            $redact_flag \
-            --out analog-ready-envelope.json
+            --baseline "$ANALOG_BASELINE" \
+            --current "$ANALOG_CURRENT" \
+            --profile "$ANALOG_PROFILE" \
+            --out "$ANALOG_ENVELOPE" \
+            "${args[@]}"
 
       - name: Upload regression envelope
         if: always()

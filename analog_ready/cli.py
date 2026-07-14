@@ -1,7 +1,7 @@
 """`analog-ready` CLI. Subcommands:
 
   doctor    — audit local-only posture and backend availability (W1).
-  summarize — emit a run-summary JSON (the record `regress` compares as a committed baseline).
+  summarize — emit a deterministic run-summary JSON for the recurring CI gate.
   regress   — gate a run-summary against a baseline (W3).
   analyze   — build a zoo model, load a profile, write HTML + JSON report (W4).
   sweep     — degradation curve over sigma, weight_bits, prog_sigma, or adc_bits (W4/W7/W9).
@@ -72,15 +72,21 @@ def _doctor(local_only: bool) -> int:
 
 # --------------------------------------------------------------------------- regress
 
-def _regress(baseline: str, current: str, out: str | None, redact: bool) -> int:
+def _regress(baseline: str, current: str, out: str | None, redact: bool,
+             profile_arg: str | None = None) -> int:
     """Compare a current run-summary JSON against a baseline; write a redacted envelope; return 0
     if no regression, 1 if a regression is detected."""
     import json
+    import os
+    import yaml
 
     from analog_ready.regress import compare, envelope
     from analog_ready.core.profile import HardwareProfile
     from analog_ready.profiles import load_profile
 
+    if out and os.path.realpath(out) in {os.path.realpath(baseline), os.path.realpath(current)}:
+        print("regress: --out must not overwrite baseline or current", file=sys.stderr)
+        return 2
     try:
         with open(baseline) as f:
             base = json.load(f)
@@ -89,18 +95,28 @@ def _regress(baseline: str, current: str, out: str | None, redact: bool) -> int:
     except (OSError, json.JSONDecodeError) as e:
         print(f"regress: could not read baseline/current JSON: {e}", file=sys.stderr)
         return 2
-    result = compare(cur, base)
+    try:
+        result = compare(cur, base)
+    except (TypeError, ValueError) as e:
+        print(f"regress: invalid baseline/current schema: {e}", file=sys.stderr)
+        return 2
     name = cur.get("profile")
     try:
-        prof = load_profile(name) if name else HardwareProfile()
-    except Exception:
-        prof = HardwareProfile(name=name or "unknown")
+        prof = (_load_profile_arg(profile_arg) if profile_arg else
+                (load_profile(name) if name else HardwareProfile()))
+    except (OSError, KeyError, ValueError, yaml.YAMLError) as e:
+        print(f"regress: could not load profile {profile_arg or name!r}: {e}", file=sys.stderr)
+        return 2
     blob = json.dumps(envelope(result, prof, model=cur.get("model"), redact=redact), indent=2)
-    if out:
-        with open(out, "w") as f:
-            f.write(blob)
-    else:
-        print(blob)
+    try:
+        if out:
+            with open(out, "w") as f:
+                f.write(blob)
+        else:
+            print(blob)
+    except OSError as e:
+        print(f"regress: could not write envelope: {e}", file=sys.stderr)
+        return 2
     return 0 if result.passed else 1
 
 
@@ -108,41 +124,47 @@ def _regress(baseline: str, current: str, out: str | None, redact: bool) -> int:
 
 def _summarize(model_name: str, profile_arg: str, out: str | None, ref_sigma: float,
                draws: int, seed: int) -> int:
-    """Emit the deterministic run-summary record `regress` consumes as its `--baseline`/`--current`.
-    This is the PRODUCER half of the recurring-CI convention: commit the summary once as a baseline,
-    then re-emit it each run and `regress` against it. Returns 0 on success; 2 on a bad model/profile."""
+    """Emit the deterministic run-summary record consumed by `regress`."""
     import json
-
     import yaml
 
-    from analog_ready.zoo import build, example_inputs
     from analog_ready.regress import summarize
+    from analog_ready.zoo import build, example_inputs
 
+    if not math.isfinite(ref_sigma) or ref_sigma < 0.0:
+        print("summarize: --ref-sigma must be finite and >= 0", file=sys.stderr)
+        return 2
+    if draws < 1:
+        print("summarize: --draws must be >= 1", file=sys.stderr)
+        return 2
     try:
         model = build(model_name).eval()
-    except (KeyError, ValueError):
-        print(f"summarize: unknown --model {model_name!r}", file=sys.stderr)
+    except (KeyError, ValueError) as e:
+        print(f"summarize: unknown --model {model_name!r}: {e}", file=sys.stderr)
         return 2
     try:
         profile = _load_profile_arg(profile_arg)
     except (OSError, KeyError, ValueError, yaml.YAMLError) as e:
         print(f"summarize: could not load --profile {profile_arg!r}: {e}", file=sys.stderr)
         return 2
-    # Real inputs drive the fidelity metric; fall back to no-input (fidelity=1.0) if the model has
-    # no registered example inputs, matching `analyze`.
     try:
         inputs = example_inputs(model_name)
-    except Exception:
-        inputs = None
-    record = summarize(model, profile, inputs=inputs, ref_sigma=ref_sigma, draws=draws, seed=seed)
-    # sort_keys + indent=2 matches the committed docs/examples/*.json baseline format exactly, so a
-    # generated baseline diffs cleanly against a hand-checked one.
-    blob = json.dumps(record, indent=2, sort_keys=True)
-    if out:
-        with open(out, "w") as f:
-            f.write(blob)
-    else:
-        print(blob)
+        record = summarize(model, profile, inputs=inputs, ref_sigma=ref_sigma,
+                           draws=draws, seed=seed)
+    except (KeyError, TypeError, ValueError, RuntimeError) as e:
+        print(f"summarize: could not evaluate {model_name!r} under {profile.name!r}: {e}",
+              file=sys.stderr)
+        return 2
+    blob = json.dumps(record, indent=2, sort_keys=True) + "\n"
+    try:
+        if out:
+            with open(out, "w") as f:
+                f.write(blob)
+        else:
+            print(blob, end="")
+    except OSError as e:
+        print(f"summarize: could not write run-summary: {e}", file=sys.stderr)
+        return 2
     return 0
 
 
@@ -172,7 +194,11 @@ def _analyze(model_name: str, profile_arg: str, out_html: str | None, out_json: 
         inputs = example_inputs(model_name)
     except Exception:
         inputs = None
-    report = analyze(model, profile, inputs=inputs)
+    try:
+        report = analyze(model, profile, inputs=inputs)
+    except (KeyError, TypeError, ValueError) as e:
+        print(f"analyze: profile/model is not analysis-ready: {e}", file=sys.stderr)
+        return 2
 
     if out_html:
         with open(out_html, "w") as f:
@@ -197,6 +223,8 @@ def _eval(model_kind: str, profile_arg: str | None, data_dir: str | None, sigma:
     labelled image folder. Missing --data-dir, an absent torchvision, or an unreadable directory all
     return a non-zero exit code with a clear message — never an uncaught traceback.
     """
+    import yaml
+
     from analog_ready.analyze import analyze
     from analog_ready.report import render_html
 
@@ -227,9 +255,17 @@ def _eval(model_kind: str, profile_arg: str | None, data_dir: str | None, sigma:
         print(f"eval: unknown --model {model_kind!r}", file=sys.stderr)
         return 2
 
-    profile = _load_profile_arg(profile_arg or "aimc_pcm_4bit")
-    report = analyze(model, profile, inputs=inputs, labels=labels, sigma=sigma, seed=seed,
-                     accuracy_source=source)
+    try:
+        profile = _load_profile_arg(profile_arg or "aimc_pcm_4bit")
+    except (OSError, KeyError, ValueError, yaml.YAMLError) as e:
+        print(f"eval: could not load --profile {profile_arg!r}: {e}", file=sys.stderr)
+        return 2
+    try:
+        report = analyze(model, profile, inputs=inputs, labels=labels, sigma=sigma, seed=seed,
+                         accuracy_source=source)
+    except (KeyError, TypeError, ValueError) as e:
+        print(f"eval: profile/model is not analysis-ready: {e}", file=sys.stderr)
+        return 2
     html = render_html(report)
     if out:
         with open(out, "w") as f:
@@ -367,23 +403,26 @@ def main(argv=None) -> int:
     doc.add_argument("--local-only", action="store_true",
                      help="assert a network-free, no-upload, redaction-on run")
 
-    # summarize
-    sm = sub.add_parser("summarize",
-                        help="emit a run-summary JSON (the baseline record the regress gate compares)")
-    sm.add_argument("--model", required=True, help="zoo model name")
-    sm.add_argument("--profile", required=True, help="builtin profile name or path to .yaml")
-    sm.add_argument("--out", default=None, help="write the run-summary JSON here (else stdout)")
-    sm.add_argument("--ref-sigma", type=float, default=0.1, dest="ref_sigma",
-                    help="noise sigma at which the fidelity metric is measured (default 0.1)")
-    sm.add_argument("--draws", type=int, default=8, help="stochastic draws for the fidelity metric")
-    sm.add_argument("--seed", type=int, default=0, help="RNG seed")
-
     # regress
     reg = sub.add_parser("regress", help="gate a current run-summary against a baseline (the recurring-CI gate)")
     reg.add_argument("--baseline", required=True, help="baseline run-summary JSON")
     reg.add_argument("--current", required=True, help="current run-summary JSON")
     reg.add_argument("--out", default=None, help="write the redacted envelope here (else stdout)")
-    reg.add_argument("--redact", action="store_true", help="omit model identity from the envelope")
+    reg.add_argument("--profile", default=None,
+                     help="profile name or YAML path for envelope redaction (defaults to record name)")
+    reg.add_argument("--redact", action="store_true",
+                     help="omit model identity and numeric derived deltas from the envelope")
+
+    # summarize
+    sm = sub.add_parser("summarize", help="emit a deterministic run-summary JSON")
+    sm.add_argument("--model", required=True, help="zoo model name")
+    sm.add_argument("--profile", required=True, help="builtin profile name or path to .yaml")
+    sm.add_argument("--out", default=None, help="write the run-summary JSON here (else stdout)")
+    sm.add_argument("--ref-sigma", type=float, default=0.1, dest="ref_sigma",
+                    help="noise sigma for the fidelity metric (default: 0.1)")
+    sm.add_argument("--draws", type=int, default=8,
+                    help="stochastic draws for the fidelity metric (default: 8)")
+    sm.add_argument("--seed", type=int, default=0, help="RNG seed")
 
     # analyze
     ana = sub.add_parser("analyze", help="analyze a zoo model under a hardware profile")
@@ -450,7 +489,7 @@ def main(argv=None) -> int:
     if args.command == "summarize":
         return _summarize(args.model, args.profile, args.out, args.ref_sigma, args.draws, args.seed)
     if args.command == "regress":
-        return _regress(args.baseline, args.current, args.out, args.redact)
+        return _regress(args.baseline, args.current, args.out, args.redact, args.profile)
     if args.command == "analyze":
         return _analyze(args.model, args.profile, args.out_html, args.out_json, args.redact)
     if args.command == "eval":

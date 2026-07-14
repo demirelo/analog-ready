@@ -1,15 +1,13 @@
 # analog-ready — Analog Robustness CI
 
-[![CI](https://github.com/demirelo/analog-ready/actions/workflows/ci.yml/badge.svg)](https://github.com/demirelo/analog-ready/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-
 > *Does your model survive your accelerator's noise / quantization / drift / converter budget,
 > which layers break, where does analog stop beating digital, and what recovers accuracy?
 > Runs behind your firewall; share only a redacted envelope.*
 
 **AIMC-first** (analog in-memory compute: PCM / ReRAM / SRAM crossbars), with a coherent
-**photonic Clements-MZI** mesh as the flagship public demo. Pure-PyTorch defaults — no GPU, no network,
-no third-party accelerator libraries required to run the core.
+**photonic Clements-MZI** mesh as the flagship public demo. Pure-PyTorch defaults — no GPU and no
+network for the core commands. The explicit exception is `eval --model resnet18`, which may download
+torchvision weights on first use.
 
 ---
 
@@ -55,10 +53,10 @@ analog-ready sweep --model mlp --param adc_bits --values 8,6,4,3 --out adc.json
 # 4. The photonic demo — pure-PyTorch Clements mesh, zero third-party deps
 analog-ready demo photonic-mzi --n 8
 
-# 5. Emit a run-summary JSON — the record the regress gate compares (commit it once as a baseline)
+# 5. Emit a deterministic run-summary JSON; commit one as the CI baseline
 analog-ready summarize --model mlp --profile aimc_pcm_4bit --out baseline.json
 
-# 6. The recurring-CI primitive: re-emit the summary and gate it against the baseline; fail closed
+# 6. The recurring-CI primitive: gate a current run against a baseline; fail closed
 analog-ready summarize --model mlp --profile aimc_pcm_4bit --out now.json
 analog-ready regress --baseline baseline.json --current now.json --redact --out envelope.json
 
@@ -106,7 +104,7 @@ Analog is favorable for an op **only if all three clear**:
 > converter resolution `adc_enob_for_energy`. It is deliberately not scaled from `enob_avail`, which
 > is the delivered system ENOB after device and signal-chain losses. The `[2, 4]` per-bit base is a
 > literature FoM trend, not a universal silicon law; see
-> `analog_ready/cost_model.py::adc_energy_pj_for_enob` and the
+> [`adc_energy_pj_for_enob`](analog_ready/cost_model.py) and the
 > [Optical Transformers ADC anchor](https://arxiv.org/abs/2302.10360).
 
 The report shows each op's verdict, its **dominant limiter**, and a sensitivity sweep where the
@@ -128,7 +126,9 @@ redaction-on posture auditable.
 
 This isn't a one-off report; it's a gate a hardware team reruns on every model /
 profile / converter change. `regress` summarises a run, compares it to a baseline, **fails closed**,
-and emits a redacted envelope safe to share outside the firewall. A worked example ships in
+and emits a redacted envelope safe to share outside the firewall. With `--redact`, the envelope omits
+model identity, numeric deltas, and derived failure text because those values can reveal hidden
+profile coefficients. A worked example ships in
 [`docs/examples/`](docs/examples/):
 
 ```bash
@@ -138,53 +138,43 @@ analog-ready regress --baseline docs/examples/baseline.json \
 echo $?        # -> 1  (regression caught)
 ```
 
-The resulting [`envelope.json`](docs/examples/envelope.json) reports
-`"fidelity dropped 0.131 (> tol 0.05)"` and ships the **redacted profile** — `enob_avail` coarsened
-to `"1..10"`, the hidden `mem_energy_pj_per_byte` omitted entirely. Nothing a vendor would object to
-leaving their firewall.
+The checked-in example is the **unredacted local** diagnostic and reports
+`"fidelity dropped 0.131 (> tol 0.05)"`. Add `--redact` for the shareable form: it keeps the verdict,
+failure category, and redacted profile, while omitting the derived numeric delta and model identity.
+The hidden `mem_energy_pj_per_byte` is omitted entirely.
 
 ### Drop-in GitHub Action
 
-The CI is literal: `analog-ready` ships a composite action ([`action.yml`](action.yml)) that
-summarizes a run and gates it against a **committed baseline**, failing the job on a real
-regression. Generate the baseline once (`analog-ready summarize … --out ci/baseline.json`) and
-commit it, then:
+The repository ships a composite action ([`action.yml`](action.yml)) that installs the checked-out
+source, emits a summary, compares it with a committed baseline, and writes an envelope. Check out
+your repository first so its baseline and custom profile are available:
 
 ```yaml
-# .github/workflows/analog-ready.yml
 name: analog-ready gate
 on: [push, pull_request]
 jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4          # your repo: the committed baseline (+ optional profile)
-      - uses: demirelo/analog-ready@v0.1.0
+      - uses: actions/checkout@v4
+      - uses: demirelo/analog-ready@main
         with:
           model: mlp
-          profile: aimc_pcm_4bit           # a builtin name, or a path to your profile YAML
+          profile: aimc_pcm_4bit
           baseline: ci/baseline.json
-          redact: "true"                    # the written envelope is safe to publish
+          redact: "true"
 ```
 
-Prefer a reusable workflow? Call
-[`.github/workflows/regress.yml`](.github/workflows/regress.yml) directly:
-
-```yaml
-jobs:
-  gate:
-    uses: demirelo/analog-ready/.github/workflows/regress.yml@v0.1.0
-    with: { model: mlp, profile: aimc_pcm_4bit, baseline: ci/baseline.json }
-```
-
-Exit codes are fail-closed: `0` no regression, `1` a regression (favorability/fidelity drop or a
-break-even flip), `2` an unreadable baseline — each fails the job so a real regression can't slip
-through silently.
+The current `main` reference is convenient while this feature is being integrated. For a
+production gate, pin the action to an immutable release tag or commit SHA after the next release.
+The reusable workflow at [`.github/workflows/regress.yml`](.github/workflows/regress.yml) follows the
+same contract and defaults to a redacted artifact.
 
 ## Interactive explainer
 
-Open [`docs/explainer.html`](docs/explainer.html) in any browser — a standalone (offline, no network)
-page with a live **break-even explorer** that runs the exact three-gate logic from
+Open [`docs/explainer.html`](docs/explainer.html) in any browser — a standalone page that loads no
+network resources and has a live **break-even explorer** for its curated flat-ADC profiles. It mirrors
+the three-gate logic from
 `analog_ready/breakeven.py`. Two committed example reports sit alongside it:
 [`sample_report.html`](docs/sample_report.html) (full internal view) and
 [`sample_report_redacted.html`](docs/sample_report_redacted.html) (the shareable view — qualitative
@@ -212,9 +202,9 @@ and correctness-audit rounds. Every increment's acceptance tests remain in `test
 2. **v1 — Profile-Conditioned QAT Runtime**: vendor-characterised profiles drive the recovery recipe.
 3. **v2 — Calibration / QAT Runtime**: only once measured-device data backs the word "calibration".
 
-Coefficients are **literature defaults** (LightCode arXiv:2509.16443; Optical Transformers
-arXiv:2302.10360; AIMC amortisation arXiv:2405.14978), **not measured silicon**. Claims are
-directional and relative, with uncertainty
+Coefficients are **literature defaults** (LightCode [arXiv:2509.16443](https://arxiv.org/abs/2509.16443),
+Optical Transformers [arXiv:2302.10360](https://arxiv.org/abs/2302.10360); AIMC amortisation
+arXiv:2405.14978), **not measured silicon**. Claims are directional and relative, with uncertainty
 bands — never "analog is N× better." See every report's *"Limits of this estimate"* section.
 What stands between this release and the word *"validated"* is stated precisely in the
 [**measured-validation roadmap**](docs/ROADMAP.md).
@@ -225,6 +215,6 @@ What stands between this release and the word *"validated"* is stated precisely 
   [`docs/vendor_profile_template.yaml`](docs/vendor_profile_template.yaml) — every field documents
   its unit, provenance schema, and redaction level — then `--profile path/to/yours.yaml`.
 - **License**: [Apache-2.0](LICENSE). **Citing**: see [`CITATION.cff`](CITATION.cff)
-  (the tool plus the four load-bearing references).
+  (the tool plus the load-bearing references).
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) — note the immutable-oracle test
   convention before touching `tests/`.

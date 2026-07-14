@@ -5,6 +5,7 @@ the profile's own redaction so a `hidden` field never leaves the tool."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 
 from analog_ready.analyze import analyze
 from analog_ready.sweeps import degradation_curve
@@ -17,9 +18,30 @@ class RegressionResult:
     failures: list = field(default_factory=list)
 
 
+_METRICS = ("favorability", "fidelity", "favorable")
+
+
+def _validate_record(record: dict, label: str) -> None:
+    """Reject malformed gate inputs before arithmetic can turn a bad baseline into a traceback."""
+    if not isinstance(record, dict) or not record:
+        raise ValueError(f"{label} must be a non-empty JSON object")
+    for key in ("favorability", "fidelity"):
+        if key not in record:
+            continue
+        value = record[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise ValueError(f"{label}.{key} must be a finite number")
+    if "favorable" in record and not isinstance(record["favorable"], bool):
+        raise ValueError(f"{label}.favorable must be a boolean")
+
+
 def summarize(model, profile, inputs=None, *, ref_sigma: float = 0.1, draws: int = 8,
               seed: int = 0) -> dict:
     """A deterministic, comparable record of a model+profile run."""
+    if not math.isfinite(ref_sigma) or ref_sigma < 0.0:
+        raise ValueError(f"ref_sigma must be finite and >= 0 (got {ref_sigma})")
+    if draws < 1:
+        raise ValueError(f"draws must be >= 1 (got {draws})")
     rep = analyze(model, profile)
     pjs = [o["cost"]["total_pj"] for o in rep.ops]
     favs = [o["score"]["favorability"] for o in rep.ops]
@@ -48,14 +70,14 @@ def compare(current: dict, baseline: dict, *, tol_fav: float = 0.05,
             tol_fid: float = 0.05) -> RegressionResult:
     """Fail if favorability drops > tol_fav, `favorable` flips True->False, or fidelity drops >
     tol_fid. Raise ValueError if the baseline is missing/empty or there is no comparable metric."""
-    if not baseline:
-        raise ValueError("missing or empty baseline — nothing to compare against")
+    _validate_record(current, "current")
+    _validate_record(baseline, "baseline")
     deltas: dict = {}
     failures: list = []
     comparable = False
     # Fail closed on schema mismatch: a gating metric present in only one record cannot be verified,
     # so a real regression in it would otherwise pass silently. Treat the asymmetry as a failure.
-    for key in ("favorability", "fidelity", "favorable"):
+    for key in _METRICS:
         if (key in current) != (key in baseline):
             comparable = True
             where = "current" if key in current else "baseline"
@@ -82,14 +104,34 @@ def compare(current: dict, baseline: dict, *, tol_fav: float = 0.05,
 
 
 def envelope(result: RegressionResult, profile, *, model=None, redact: bool = False) -> dict:
-    """A shareable verdict. Never includes a `hidden` profile field's raw value (reuses
-    profile.redacted()). With redact=True, the model identity is omitted."""
+    """A verdict envelope.
+
+    With `redact=True`, omit the model identity and all numeric deltas/failure text. A favorability
+    delta can be derived from hidden energy coefficients, so excluding only their raw values is not
+    sufficient for a genuinely shareable artifact.
+    """
+    failures = list(result.failures)
     env = {
         "passed": result.passed,
-        "failures": list(result.failures),
-        "deltas": dict(result.deltas),
+        "failures": failures if not redact else [_redacted_failure(f) for f in failures],
         "profile_redacted": profile.redacted(),
     }
+    if not redact:
+        env["deltas"] = dict(result.deltas)
     if model is not None and not redact:
         env["model"] = model
     return env
+
+
+def _redacted_failure(failure: str) -> str:
+    """Keep the category useful while dropping derived numeric values from a shareable envelope."""
+    lower = failure.lower()
+    if "favorab" in lower:
+        return "favorability regression"
+    if "fidel" in lower:
+        return "fidelity regression"
+    if "break-even" in lower:
+        return "break-even regression"
+    if "present only" in lower or "comparable" in lower:
+        return "comparison schema mismatch"
+    return "regression detected"
