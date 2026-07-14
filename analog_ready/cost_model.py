@@ -1,6 +1,6 @@
 """The system-level cost model — the spine. Energy splits into compute (analog MACs) + ADC/DAC
 conversion + DRAM movement (LightCode framing: converters + memory movement, not the analog MACs,
-dominate system energy). With LightCode's own coefficients (0.04 pJ analog MAC, 3.17 pJ 8-bit ADC,
+dominate system energy). With the cited coefficients (0.04 pJ analog MAC, 3.17 pJ 7-bit ADC,
 10 pJ DAC) the CONVERTER share alone, DERIVED here, ranges from ~1.3x the analog compute at 256-wide
 arrays to ~10x at 32-wide (adding DRAM movement: ~2.6x / ~11.7x for the same square shapes) — ratios
 we compute from the coefficients per op shape/precision/array size, not figures LightCode reports
@@ -35,7 +35,10 @@ class Coefficient:
 # provenance for each profile coefficient the estimate consumes: (unit, source, uncertainty).
 _PROVENANCE = {
     "mac_energy_pj": ("pJ/MAC", "LightCode arXiv:2509.16443 (analog MAC ~0.04 pJ)", "+/-50%"),
-    "adc_energy_pj": ("pJ/conversion", "LightCode arXiv:2509.16443 (8b ADC ~3.17 pJ)", "+/-50%"),
+    "adc_energy_pj": ("pJ/conversion",
+                       "Optical Transformers arXiv:2302.10360 (7b ADC, 3.17 pJ/sample); "
+                       "reused as a LightCode arXiv:2509.16443 assumption",
+                       "+/-50%"),
     "dac_energy_pj": ("pJ/conversion", "LightCode arXiv:2509.16443 (DAC ~10 pJ)", "+/-50%"),
     "mem_energy_pj_per_byte": ("pJ/byte", "DRAM movement, LightCode system model", "+/-2x"),
     "digital_mac_energy_pj": ("pJ/MAC", "digital MAC baseline this op would replace", "+/-50%"),
@@ -81,6 +84,20 @@ def _val(profile, key: str) -> float:
     return float(profile.fields[key].value)
 
 
+def _val_or(profile, key: str, default: float) -> float:
+    return float(profile.fields[key].value) if key in profile.fields else float(default)
+
+
+def _field_str(profile, key: str, default: str) -> str:
+    return str(profile.fields[key].value) if key in profile.fields else default
+
+
+# The cited Optical Transformers model uses 3.17 pJ for a 7-bit ADC output sample. The coupled
+# model is deliberately opt-in because this is a literature trend, not a measured device model.
+ADC_ENERGY_REF_ENOB = 7.0
+ADC_ENERGY_ENOB_BASE = 2.0
+
+
 def dram_bytes(feat, weight_bits: float, input_bits: float, output_bits: float = 8.0) -> float:
     """Single-pass lower bound on bytes moved: weights once + activations. Excludes partial-sum
     re-streaming and weight re-loads for non-resident tiles (a v0.1 refinement). Shared by the cost
@@ -92,6 +109,27 @@ def dram_bytes(feat, weight_bits: float, input_bits: float, output_bits: float =
     conservative. Override explicitly for a wider-output design."""
     return (feat.weight_numel * weight_bits + feat.act_in_numel * input_bits
             + feat.act_out_numel * output_bits) / 8.0
+
+
+def adc_energy_pj_for_enob(enob, ref_energy_pj, *, ref_enob: float = ADC_ENERGY_REF_ENOB,
+                           base: float = ADC_ENERGY_ENOB_BASE) -> float:
+    """Scale an anchored ADC energy with nominal converter ENOB.
+
+    `ref_energy_pj` is the per-conversion energy at `ref_enob` effective bits. The allowed base
+    range [2, 4] covers the usual Walden-like and thermal-noise-like sensitivity assumptions. This
+    is a literature FoM trend, not measured silicon, and must not be confused with the system's
+    delivered `enob_avail` after device noise and signal-chain losses.
+    """
+    enob, ref_energy_pj, ref_enob, base = (float(enob), float(ref_energy_pj), float(ref_enob),
+                                           float(base))
+    if not (math.isfinite(base) and 2.0 <= base <= 4.0):
+        raise ValueError(f"adc energy scaling base must be finite and in [2, 4] (got {base})")
+    if not (math.isfinite(enob) and enob >= 0.0 and math.isfinite(ref_enob) and ref_enob >= 0.0):
+        raise ValueError(f"enob and ref_enob must be finite and >= 0 (got enob={enob}, "
+                         f"ref_enob={ref_enob})")
+    if not (math.isfinite(ref_energy_pj) and ref_energy_pj > 0.0):
+        raise ValueError(f"reference ADC energy must be finite and > 0 (got {ref_energy_pj})")
+    return ref_energy_pj * base ** (enob - ref_enob)
 
 
 _REQUIRED_FIELDS = ("array_rows", "array_cols", "weight_bits", "input_bits",
@@ -111,6 +149,20 @@ def estimate_op(feat, profile) -> OpCost:
     mac_e, adc_e, dac_e = _val(profile, "mac_energy_pj"), _val(profile, "adc_energy_pj"), _val(profile, "dac_energy_pj")
     mem_e = _val(profile, "mem_energy_pj_per_byte")
 
+    adc_model = _field_str(profile, "adc_energy_model", "flat").strip().lower()
+    if adc_model not in {"flat", "coupled"}:
+        raise ValueError(f"profile {getattr(profile, 'name', '?')!r} has unknown "
+                         f"adc_energy_model {adc_model!r}; expected 'flat' or 'coupled'")
+    adc_enob = adc_ref_enob = adc_base = None
+    if adc_model == "coupled":
+        if "adc_enob_for_energy" not in profile.fields:
+            raise ValueError(f"profile {getattr(profile, 'name', '?')!r} sets "
+                             "adc_energy_model='coupled' but declares no adc_enob_for_energy")
+        adc_enob = _val(profile, "adc_enob_for_energy")
+        adc_ref_enob = _val_or(profile, "adc_energy_ref_enob", ADC_ENERGY_REF_ENOB)
+        adc_base = _val_or(profile, "adc_energy_enob_base", ADC_ENERGY_ENOB_BASE)
+        adc_e = adc_energy_pj_for_enob(adc_enob, adc_e, ref_enob=adc_ref_enob, base=adc_base)
+
     k_tiles = math.ceil(feat.K / rows)
     n_tiles = math.ceil(feat.N / cols)
     # No-sharing tile model (see module docstring): each spatial tile drives its own input DACs, so
@@ -128,6 +180,13 @@ def estimate_op(feat, profile) -> OpCost:
     latency_ns = float(feat.M * k_tiles * n_tiles)
     converter_pj_per_mac = conversion_pj / feat.macs if feat.macs else 0.0
     coeffs = {k: _coeff(profile, k) for k in _PROVENANCE}
+    if adc_model == "coupled":
+        unit, source, unc = _PROVENANCE["adc_energy_pj"]
+        coeffs["adc_energy_effective_pj"] = Coefficient(
+            adc_e, unit,
+            f"{source}; coupled at nominal ENOB={adc_enob:g} "
+            f"(ref ENOB={adc_ref_enob:g}, base={adc_base:g})",
+            unc)
     return OpCost(feat.name, feat.macs, compute_pj, conversion_pj, dram_pj, total_pj,
                   latency_ns, converter_pj_per_mac, coeffs)
 
