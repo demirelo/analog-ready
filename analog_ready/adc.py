@@ -76,7 +76,12 @@ def adc_quantize(x: torch.Tensor, *, bits: float, full_scale: float | None = Non
 
 def adc_saturation_fraction(x: torch.Tensor, full_scale: float) -> float:
     """Fraction of `x` whose magnitude exceeds a fixed ADC full-scale (i.e. clips). In [0, 1]."""
-    return float((x.abs() > float(full_scale)).float().mean())
+    full_scale = float(full_scale)
+    if not math.isfinite(full_scale) or full_scale <= 0:
+        raise ValueError(f"full_scale must be a finite value > 0 (got {full_scale})")
+    if not torch.isfinite(x).all():
+        raise ValueError("adc_saturation_fraction: signal contains NaN/inf")
+    return float((x.abs() > full_scale).float().mean())
 
 
 class ADCQuant:

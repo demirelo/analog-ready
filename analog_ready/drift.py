@@ -39,6 +39,7 @@ pair drift model is a future refinement.
 from __future__ import annotations
 
 import copy
+import math
 
 import torch
 
@@ -59,22 +60,28 @@ def drift_weight(weight: torch.Tensor, *, nu: float, t_s: float, t0: float = 1.0
 
     At t_s == t0 the factor is 1 for every weight (no time elapsed — identity). With sigma_nu == 0
     every weight shares the same factor. Never mutates `weight`; deterministic given `seed`.
-    Raises ValueError for t0 <= 0 or a negative elapsed time t_s."""
-    if t0 <= 0:
-        raise ValueError(f"t0 (reference time) must be > 0 (got {t0})")
-    if t_s < 0:
-        raise ValueError(f"t_s (elapsed time) must be >= 0 (got {t_s})")
+    Raises ValueError for non-finite or negative drift parameters, t0 <= 0, or non-positive elapsed
+    time t_s. The power-law model is only defined for positive time ratios."""
+    if (not math.isfinite(float(t0)) or t0 <= 0):
+        raise ValueError(f"t0 (reference time) must be finite and > 0 (got {t0})")
+    if (not math.isfinite(float(t_s)) or t_s <= 0):
+        raise ValueError(f"t_s (elapsed time) must be finite and > 0 (got {t_s})")
+    if (not math.isfinite(float(nu)) or nu < 0):
+        raise ValueError(f"nu (drift exponent) must be finite and >= 0 (got {nu})")
+    if (not math.isfinite(float(sigma_nu)) or sigma_nu < 0):
+        raise ValueError(f"sigma_nu must be finite and >= 0 (got {sigma_nu})")
     if t_s == t0:
         return weight.clone()
     with torch.random.fork_rng():
         torch.manual_seed(seed)
-        eps = torch.randn(weight.shape, dtype=weight.dtype) if sigma_nu else None
+        eps = (torch.randn(weight.shape, dtype=weight.dtype, device=weight.device)
+               if sigma_nu else None)
     if sigma_nu:
         nu_i = nu + sigma_nu * eps
     else:
-        nu_i = torch.full(weight.shape, float(nu), dtype=weight.dtype)
+        nu_i = torch.full(weight.shape, float(nu), dtype=weight.dtype, device=weight.device)
     nu_i = nu_i.clamp(min=0.0)   # non-negative drift exponent: conductance decays, never grows
-    ratio = torch.as_tensor(t_s / t0, dtype=weight.dtype)
+    ratio = torch.as_tensor(t_s / t0, dtype=weight.dtype, device=weight.device)
     factor = ratio ** (-nu_i)
     return weight * factor
 

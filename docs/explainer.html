@@ -326,8 +326,8 @@
   <div class="wrap">
     <div class="eyebrow">Interactive · the spine</div>
     <h2>The break-even explorer</h2>
-    <p class="sub">This runs the <em>exact</em> three-gate logic from
-      <code>analog_ready/breakeven.py</code> live in your browser. Analog is <span class="dfn" tabindex="0" data-def="Whether analog beats digital for an op under this profile — true only when all three break-even gates clear: converter energy per MAC (X), weight reuse (Y), and required precision/ENOB (Z).">favorable</span> for an op only
+    <p class="sub">This runs the same three-gate logic as
+      <code>analog_ready/breakeven.py</code> for these curated flat-ADC profiles. Analog is <span class="dfn" tabindex="0" data-def="Whether analog beats digital for an op under this profile — true only when all three break-even gates clear: converter energy per MAC (X), weight reuse (Y), and required precision/ENOB (Z).">favorable</span> for an op only
       if all three clear: converter energy per MAC undercuts the digital MAC it replaces
       (<b>X</b>), weight reuse amortises the analog write energy (<b>Y</b>), and the required ENOB fits
       the analog dynamic range (<b>Z</b>). Move the sliders and watch the verdict flip.</p>
@@ -482,15 +482,17 @@ $ <span class="pr">analog-ready</span> doctor --local-only
 <section id="cli">
   <div class="wrap">
     <div class="eyebrow">The surface</div>
-    <h2>One CLI, eight verbs</h2>
+    <h2>One CLI, nine verbs</h2>
     <p class="sub">Everything the report shows is reproducible from the command line — pure-PyTorch
-      defaults, network-free.</p>
+      defaults, with network-free core commands. The real ResNet-18 path is the documented exception
+      because torchvision may download weights.</p>
     <div class="verbs">
       <div class="verb"><code>doctor</code><p>Audit the local-only posture and backend availability.</p></div>
       <div class="verb"><code>analyze</code><p>Per-op cost, score and break-even, written to a self-contained HTML/JSON report.</p></div>
       <div class="verb"><code>sweep</code><p>A degradation curve over output σ, weight-bits, faithful <span class="dfn right" tabindex="0" data-def="The error when a weight is written onto an analog cell: a proportional part that scales with the weight's magnitude, plus a fixed read floor. The physically-grounded replacement for 'just add some Gaussian noise'.">weight-programming noise</span> (<code>prog_sigma</code>), or <span class="dfn right" tabindex="0" data-def="Effective Number of Bits — the true precision of an analog signal path once noise is folded in. adc_bits quantizes each layer's output to that many effective bits over its own per-sample dynamic range, deterministic (no draw variance).">ADC readout precision</span> (<code>adc_bits</code>), seeded and reproducible.</p></div>
       <div class="verb"><code>demo photonic-mzi</code><p>The pure-PyTorch Clements mesh demo — zero third-party deps.</p></div>
       <div class="verb"><code>eval</code><p>Real task accuracy on a labelled set — clean vs under an illustrative noise stress.</p></div>
+      <div class="verb"><code>summarize</code><p>Emit the deterministic run-summary record consumed by the CI gate.</p></div>
       <div class="verb"><code>regress</code><p>The CI primitive: gate a run against a baseline, fail closed, emit a redacted envelope.</p></div>
       <div class="verb"><code>validate</code><p>One-command, byte-deterministic validation curve plus a recovery recipe.</p></div>
       <div class="verb"><code>pilot</code><p>Run the stored measured-silicon references through the composite — an honest <em>indicative</em> check (the A0 baseline reproduction is still pending), never a claimed validated pass.</p></div>
@@ -501,8 +503,11 @@ $ <span class="pr">analog-ready</span> doctor --local-only
       --out report.html --redact --local-only
   <span class="cm">→ wrote report.html (per-op break-even; no hidden coefficient leaked)</span>
 
+$ <span class="pr">analog-ready</span> summarize --model mlp --profile aimc_pcm_4bit --out baseline.json
+  <span class="cm">→ wrote baseline.json (deterministic CI run-summary)</span>
+
 $ <span class="pr">analog-ready</span> regress --baseline prev.json --current now.json --redact
-  <span class="ok">PASS</span> <span class="cm"># favorability &amp; fidelity within tolerance; envelope on stdout</span></pre>
+  <span class="ok">PASS</span> <span class="cm"># favorability &amp; fidelity within tolerance; numeric deltas omitted when redacted</span></pre>
     </div>
   </div>
 </section>
@@ -542,7 +547,8 @@ $ <span class="pr">analog-ready</span> regress --baseline prev.json --current no
     <p class="foot"><strong>analog-ready</strong> — Analog Robustness CI, AIMC-first with photonics as
       the public demo. Built test-first against an immutable acceptance oracle; the break-even envelope is
       the spine that must not slip. This page is a standalone explainer — it loads no network resources
-      and runs entirely offline. Apache-2.0 · source &amp; citation:
+      and runs entirely offline. The separate ResNet-18 CLI path may download torchvision weights.
+      Apache-2.0 · source &amp; citation:
       <code>github.com/demirelo/analog-ready</code>.</p>
   </div>
 </footer>

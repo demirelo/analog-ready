@@ -28,6 +28,8 @@ SIMPLIFICATIONS — be honest about what this does NOT model, so a hardware engi
 """
 from __future__ import annotations
 
+import math
+
 import torch
 
 
@@ -38,9 +40,11 @@ def program_noise(weight: torch.Tensor, *, prop_sigma: float, read_sigma: float,
     uses `torch.random.fork_rng()` so it does not advance/clobber the caller's global torch RNG
     (same hygiene as `sweeps.py`/`recovery.py`). Identity when both sigmas are 0.
 
-    Raises ValueError on a negative sigma (a noise LEVEL must be >= 0) and on a non-floating-point
-    weight (Gaussian perturbation is undefined for integer/quantised storage)."""
-    if prop_sigma < 0.0 or read_sigma < 0.0:
+    Raises ValueError on a negative or non-finite sigma (a noise LEVEL must be finite and >= 0) and
+    on a non-floating-point weight (Gaussian perturbation is undefined for integer/quantised
+    storage)."""
+    if (not math.isfinite(prop_sigma) or not math.isfinite(read_sigma)
+            or prop_sigma < 0.0 or read_sigma < 0.0):
         raise ValueError(f"noise sigmas must be >= 0 (got prop_sigma={prop_sigma}, "
                          f"read_sigma={read_sigma})")
     if not weight.is_floating_point():

@@ -1,0 +1,92 @@
+name: "analog-ready regression gate"
+description: >-
+  Fail-closed analog-readiness CI gate: summarize a zoo model and hardware profile, compare it to a
+  committed baseline, and write a redactable regression envelope.
+author: "analog-ready"
+branding:
+  icon: cpu
+  color: purple
+
+inputs:
+  model:
+    description: "zoo model name"
+    required: true
+  profile:
+    description: "builtin profile name or a path to your own profile YAML"
+    required: true
+  baseline:
+    description: "path in the caller checkout to the committed run-summary JSON"
+    required: true
+  python-version:
+    description: "Python version to run the gate on"
+    required: false
+    default: "3.12"
+  redact:
+    description: "omit model identity and derived numeric deltas from the envelope"
+    required: false
+    default: "true"
+  envelope-out:
+    description: "where to write the regression envelope"
+    required: false
+    default: "analog-ready-envelope.json"
+
+outputs:
+  envelope:
+    description: "path to the written regression envelope"
+    value: ${{ inputs.envelope-out }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install analog-ready
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: pip install "$ACTION_PATH"
+
+    - name: Summarize current run
+      shell: bash
+      env:
+        ANALOG_MODEL: ${{ inputs.model }}
+        ANALOG_PROFILE: ${{ inputs.profile }}
+        ANALOG_CURRENT: ${{ runner.temp }}/analog-ready-current.json
+      run: |
+        set -euo pipefail
+        analog-ready summarize \
+          --model "$ANALOG_MODEL" \
+          --profile "$ANALOG_PROFILE" \
+          --out "$ANALOG_CURRENT"
+
+    - name: Regress against committed baseline (fail-closed)
+      shell: bash
+      env:
+        ANALOG_BASELINE: ${{ inputs.baseline }}
+        ANALOG_CURRENT: ${{ runner.temp }}/analog-ready-current.json
+        ANALOG_PROFILE: ${{ inputs.profile }}
+        ANALOG_ENVELOPE: ${{ inputs.envelope-out }}
+        ANALOG_REDACT: ${{ inputs.redact }}
+      run: |
+        set -euo pipefail
+        baseline_abs="$(realpath -m -- "$ANALOG_BASELINE")"
+        envelope_abs="$(realpath -m -- "$ANALOG_ENVELOPE")"
+        if [[ "$baseline_abs" == "$envelope_abs" ]]; then
+          echo "regress: --envelope-out must not overwrite --baseline" >&2
+          exit 2
+        fi
+        args=()
+        case "$ANALOG_REDACT" in
+          true) args+=(--redact) ;;
+          false|"") ;;
+          *) echo "regress: redact must be true or false" >&2; exit 2 ;;
+        esac
+        analog-ready regress \
+          --baseline "$ANALOG_BASELINE" \
+          --current "$ANALOG_CURRENT" \
+          --profile "$ANALOG_PROFILE" \
+          --out "$ANALOG_ENVELOPE" \
+          "${args[@]}"

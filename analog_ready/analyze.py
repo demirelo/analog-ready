@@ -24,6 +24,11 @@ from analog_ready.compose import end_of_life_curve
 # Standard retention horizons surfaced when a profile declares a drift exponent: 1s / 1hr / 1day /
 # 1month / 1year, relative to the profile's own t0=1.0 reference time.
 _RETENTION_TIMES = [1.0, 3600.0, 86400.0, 2.6e6, 3.15e7]
+_ANALYSIS_REQUIRED_FIELDS = (
+    "array_rows", "array_cols", "weight_bits", "input_bits", "enob_avail",
+    "mac_energy_pj", "adc_energy_pj", "dac_energy_pj", "mem_energy_pj_per_byte",
+    "digital_mac_energy_pj", "weight_program_energy_pj", "peak_flops", "peak_bw_bytes",
+)
 
 
 @dataclass
@@ -112,6 +117,10 @@ def _sweep_enob(feats, profile) -> list:
 
 def analyze(model, profile, workload: Workload | None = None, *, inputs=None, labels=None,
             sigma: float = 0.1, seed: int = 0, accuracy_source: str | None = None) -> AnalysisReport:
+    missing = [key for key in _ANALYSIS_REQUIRED_FIELDS if key not in profile.fields]
+    if missing:
+        raise ValueError(f"profile {getattr(profile, 'name', '?')!r} is missing required "
+                         f"analysis field(s): {', '.join(missing)}")
     feats = extract_op_features(model, workload or Workload())
     ops, total = [], 0.0
     for f in feats:

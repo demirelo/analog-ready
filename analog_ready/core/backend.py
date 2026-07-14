@@ -1,12 +1,13 @@
 """The backend registry. Default backends (mzi_pure, aimc_simple) are pure-PyTorch and always
 available. Optional backends (mzi_torchonn, aimc_aihwkit) import their heavy dependency LAZILY —
 a missing dep surfaces as available=False+reason, never an exception, and is never imported by
-`import analog_ready`. Discovery is a static internal table (the package runs from source, so we
-do not depend on installed entry points)."""
+`import analog_ready`. Builtins use a static table so source checkouts work; installed third-party
+backends are discovered through the advertised ``analog_ready.backends`` entry-point group."""
 from __future__ import annotations
 
 import importlib
 import importlib.util
+from importlib import metadata
 from dataclasses import dataclass
 
 
@@ -42,9 +43,27 @@ _REGISTRY: dict[str, tuple[str, str, str | None]] = {
 }
 
 
+def _entry_points() -> dict:
+    """Return external backend entry points without importing any backend implementation."""
+    try:
+        points = metadata.entry_points(group="analog_ready.backends")
+    except TypeError:  # Python 3.9 compatibility
+        points = metadata.entry_points().get("analog_ready.backends", ())
+    return {point.name: point for point in points if point.name not in _REGISTRY}
+
+
 def _load(name: str):
     """Return (cls, None) on success or (None, reason) if the backend or its dep is unavailable."""
-    module_path, cls_name, dep = _REGISTRY[name]
+    if name in _REGISTRY:
+        module_path, cls_name, dep = _REGISTRY[name]
+    else:
+        point = _entry_points().get(name)
+        if point is None:
+            return None, f"unknown backend {name!r}"
+        try:
+            return point.load(), None
+        except Exception as exc:  # optional plugin import-time failure
+            return None, f"entry point failed to load: {type(exc).__name__}: {exc}"
     if dep is not None:
         if importlib.util.find_spec(dep) is None:
             return None, f"optional dependency {dep!r} is not installed"
@@ -59,7 +78,7 @@ def _load(name: str):
 
 def status() -> list[BackendStatus]:
     rows = []
-    for name in _REGISTRY:
+    for name in (*_REGISTRY, *_entry_points()):
         cls, reason = _load(name)
         rows.append(BackendStatus(name=name, available=cls is not None, reason=reason))
     return rows
@@ -67,7 +86,7 @@ def status() -> list[BackendStatus]:
 
 def get(name: str):
     """The backend class if available, else None."""
-    if name not in _REGISTRY:
+    if name not in _REGISTRY and name not in _entry_points():
         return None
     cls, _ = _load(name)
     return cls
