@@ -10,7 +10,9 @@ fields:
   array_rows:             {value: 256,     redaction: exact_ok}
   array_cols:             {value: 256,     redaction: exact_ok}
   mac_energy_pj:          {value: 0.02,    redaction: bucket}
-  adc_energy_pj:          {value: 3.17,    redaction: bucket}
+  adc_energy_pj:          {value: 3.17,    redaction: bucket, unit: pJ/conversion,
+                           provenance: literature,
+                           source: "Optical Transformers arXiv:2302.10360 (7-bit ADC); reused by LightCode arXiv:2509.16443"}
   dac_energy_pj:          {value: 10.0,    redaction: bucket}
   mem_energy_pj_per_byte: {value: 0.1,     redaction: hidden}
   digital_mac_energy_pj:  {value: 0.07,    redaction: exact_ok}

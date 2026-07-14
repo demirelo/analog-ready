@@ -66,3 +66,21 @@ references:
     identifiers:
       - type: other
         value: "arXiv:2405.14978"
+  - type: article
+    title: "Optical Transformers"
+    authors:
+      - family-names: Anderson
+        given-names: Maxwell G.
+      - family-names: Ma
+        given-names: Shi-Yuan
+      - family-names: Wang
+        given-names: Tianyu
+      - family-names: Wright
+        given-names: Logan G.
+      - family-names: McMahon
+        given-names: Peter L.
+    journal: "Transactions on Machine Learning Research"
+    year: 2024
+    identifiers:
+      - type: other
+        value: "arXiv:2302.10360"
